@@ -1,0 +1,32 @@
+[project]
+name = "dlii-labeler"
+display-name = "DLii Labeler"
+organization = "DLii Technologies"
+organization-domain = "dlii.tech"
+version = "0.0.1"
+authors = [
+  { name="David W. Ludwig II", email="davidludwigii@gmail.com" }
+]
+description = "A utility for object detection and segmentation labeling."
+readme = "README.md"
+license = { file="LICENSE" }
+requires-python = ">=3.11"
+dependencies = [
+  "opencv-python",
+  "PyQt6>=6.10.0",
+  "torch>=2.5.1",
+  "ultralytics",
+]
+
+# Development dependencies
+[project.optional-dependencies]
+dev = [
+  "pyinstaller"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/DLii-Technologies/labeler"
+"Bug Tracker" = "https://github.com/DLii-Technologies/labeler/issues"
+
+[tool.ruff]
+line-length = 100

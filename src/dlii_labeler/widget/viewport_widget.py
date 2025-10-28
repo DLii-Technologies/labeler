@@ -1,14 +1,14 @@
 from typing import Optional
-
 from PyQt6.QtCore import (
+	pyqtSignal,
 	QElapsedTimer,
 	QPoint,
 	QPointF,
 	Qt,
 	QTimer
 )
-
 from PyQt6.QtGui import (
+	QAction,
 	QCursor,
 	QImage,
 	QMouseEvent,
@@ -16,16 +16,22 @@ from PyQt6.QtGui import (
 	QResizeEvent,
 	QWheelEvent
 )
-
 from PyQt6.QtWidgets import (
-	QGraphicsScene,
 	QGraphicsView,
+	QMenu,
+	QToolBar,
+	QToolButton,
 	QWidget
 )
 
-class ViewportWidget(QGraphicsView):
+from ..activity import Activity
+from .pane_widget import PaneWidget
+
+class ViewportWidget(PaneWidget, QGraphicsView):
 
 	ANIM_HALF_LIFE_MS = 45
+
+	activityChanged = pyqtSignal(Activity)
 
 	def __init__(self, parent: Optional[QWidget] = None) -> None:
 		super().__init__(parent)
@@ -33,9 +39,6 @@ class ViewportWidget(QGraphicsView):
 		# Disable scrollbars
 		self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 		self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-
-		scene = QGraphicsScene(self)
-		self.setScene(scene)
 
 		# Panning
 		self._pan_anchor_scene_pos: Optional[QPointF] = None
@@ -51,6 +54,25 @@ class ViewportWidget(QGraphicsView):
 		self._render_step_timer.timeout.connect(self._renderStep)
 		self._render_step_elapsed_timer = QElapsedTimer()
 
+		from ..application import Application
+		app = Application.instance()
+		app.imageChanged.connect(lambda _: self._updateSceneRect())
+
+		# Toolbar buttons
+		self._activity_button = QToolButton()
+		self._activity_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+		self._activity_menu = QMenu()
+		for activity in app.activities().values():
+			action = QAction(activity.IDENTIFIER, self)
+			action.triggered.connect(lambda _, a=activity: self.setActivity(a))
+			self._activity_menu.addAction(action)
+		self._activity_button.setMenu(self._activity_menu)
+		self.activityChanged.connect(lambda activity: self._activity_button.setText(f"Activity: {activity.IDENTIFIER}"))
+
+		self._activity: Activity
+		self.setActivity(app.activities()["Object Detection"])
+
+
 	# Public Interface -----------------------------------------------------------------------------
 
 	def isPanning(self) -> bool:
@@ -61,23 +83,19 @@ class ViewportWidget(QGraphicsView):
 		return self._pan_anchor_scene_pos is not None
 
 
-	def panTo(self, scene_pos: QPointF) -> None:
-		# self._zoom_scene_pos = scene_pos
-		self._target_pan_pos = scene_pos
-		self.scheduleRenderUpdates()
-
-
-	def setImage(self, image: QImage) -> None:
-		scene = self.scene()
-		if scene is None:
-			return
-		self._image = QPixmap.fromImage(image)
-		scene.clear()
-		scene.addPixmap(self._image)
+	def setActivity(self, activity: Activity) -> None:
+		self._activity = activity
+		self.setScene(self._activity)
+		self.activityChanged.emit(activity)
 		self._updateSceneRect()
 
 
-	def setZoom(self, zoom: float):
+	def setZoom(self, zoom: float, instant: bool = False):
+		if instant:
+			self._current_zoom *= zoom
+			super().scale(zoom, zoom)
+			self._updateSceneRect()
+			return
 		if abs(zoom - self._target_zoom) / max(self._target_zoom, 1e-12) < 1e-6:
 			return
 		self._target_zoom = zoom
@@ -90,24 +108,17 @@ class ViewportWidget(QGraphicsView):
 		self._updateSceneRect()
 
 
-	def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
-		pos = event.pos()
-		if pos is not None:
-			self.panTo(self.mapToScene(pos))
-		super().mouseDoubleClickEvent(event)
-
-
 	def mousePressEvent(self, event: QMouseEvent) -> None:
 		pos = event.pos()
 		if pos is not None:
 			# Check for panning
 			if event.button() == Qt.MouseButton.MiddleButton or (
 				event.button() == Qt.MouseButton.LeftButton and
-				(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+				(event.modifiers() & Qt.KeyboardModifier.AltModifier)
 			):
 				self._pan_anchor_scene_pos = self.mapToScene(pos)
 				self.setCursor(Qt.CursorShape.ClosedHandCursor)
-
+				return
 		super().mousePressEvent(event)
 
 
@@ -115,9 +126,8 @@ class ViewportWidget(QGraphicsView):
 		pos = event.pos()
 		if pos is not None and self._pan_anchor_scene_pos is not None:
 			# Panning
-			delta = pos - self.mapFromScene(self._pan_anchor_scene_pos)
-			self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
-			self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())
+			delta = self.mapFromScene(self._pan_anchor_scene_pos) - pos
+			self.pan(delta)
 			return
 		super().mouseMoveEvent(event)
 
@@ -126,6 +136,7 @@ class ViewportWidget(QGraphicsView):
 		if self._pan_anchor_scene_pos is not None and event.button() in (Qt.MouseButton.MiddleButton, Qt.MouseButton.LeftButton):
 			self._pan_anchor_scene_pos = None
 			self.unsetCursor()
+			return
 		return super().mouseReleaseEvent(event)
 
 
@@ -139,10 +150,13 @@ class ViewportWidget(QGraphicsView):
 
 	# Internal -------------------------------------------------------------------------------------
 
-	def scale(self, factor: float) -> None:
-		self._current_zoom *= factor
-		super().scale(factor, factor)
-		self._updateSceneRect()
+	def setupToolBar(self, toolbar: QToolBar):
+		toolbar.addWidget(self._activity_button)
+
+
+	def pan(self, delta: QPoint) -> None:
+		self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() + delta.x()) # type: ignore
+		self.verticalScrollBar().setValue(self.verticalScrollBar().value() + delta.y()) # type: ignore
 
 
 	def _updateSceneRect(self):
@@ -159,8 +173,8 @@ class ViewportWidget(QGraphicsView):
 		scene.setSceneRect(
 			-margin_width,
 			-margin_height,
-			self._image.width() + 2*margin_width,
-			self._image.height() + 2*margin_height
+			self._activity._frame.pixmap().width() + 2*margin_width,
+			self._activity._frame.pixmap().height() + 2*margin_height
 		)
 
 	# Rendering ------------------------------------------------------------------------------------
@@ -203,14 +217,11 @@ class ViewportWidget(QGraphicsView):
 			# No zoom position set, and cursor position is not available
 			view_pos = self.rect().center()
 			scene_pos = self.mapToScene(view_pos)
-
-		# Update the scene rectangle
-		self.scale(factor)
+		self.setZoom(factor, instant=True)
 
 		# Reposition under mouse cursor
 		delta = self.mapFromScene(scene_pos) - view_pos
-		self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() + delta.x())
-		self.verticalScrollBar().setValue(self.verticalScrollBar().value() + delta.y())
+		self.pan(delta)
 
 		return True
 

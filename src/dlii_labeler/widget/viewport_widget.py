@@ -10,9 +10,7 @@ from PyQt6.QtCore import (
 from PyQt6.QtGui import (
 	QAction,
 	QCursor,
-	QImage,
 	QMouseEvent,
-	QPixmap,
 	QResizeEvent,
 	QWheelEvent
 )
@@ -35,6 +33,8 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 
 	def __init__(self, parent: Optional[QWidget] = None) -> None:
 		super().__init__(parent)
+
+		self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
 
 		# Disable scrollbars
 		self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -86,8 +86,8 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 	def setActivity(self, activity: Activity) -> None:
 		self._activity = activity
 		self.setScene(self._activity)
-		self.activityChanged.emit(activity)
 		self._updateSceneRect()
+		self.activityChanged.emit(activity)
 
 
 	def setZoom(self, zoom: float, instant: bool = False):
@@ -135,8 +135,8 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 	def mouseReleaseEvent(self, event: QMouseEvent) -> None:
 		if self._pan_anchor_scene_pos is not None and event.button() in (Qt.MouseButton.MiddleButton, Qt.MouseButton.LeftButton):
 			self._pan_anchor_scene_pos = None
-			self.unsetCursor()
 			return
+		self.unsetCursor()
 		return super().mouseReleaseEvent(event)
 
 

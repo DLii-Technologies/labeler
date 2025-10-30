@@ -52,7 +52,6 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 
 		# Set scene rect to infinite
 		self.setSceneRect(-float("inf"), -float("inf"), float("inf"), float("inf"))
-		# self.setSceneRect(-1e10, -1e10, 2e10, 2e10)
 
 		from ..application import Application
 		self._app = Application.instance()
@@ -88,11 +87,11 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		self._activity_button.setMenu(self._activity_menu)
 		self.activityChanged.connect(lambda activity: self._activity_button.setText(f"Activity: {activity.IDENTIFIER}"))
 
-		self._fit_to_window_action = QAction("Fit to Window", self)
-		self._fit_to_window_action.triggered.connect(self.fitToWindow)
+		self._fit_to_window_action = QAction("Recenter", self)
+		self._fit_to_window_action.triggered.connect(self.recenter)
 
 		# Signals and Slots
-		self._app.imageChanged.connect(self._resetBaseTransform)
+		self._app.mediaManager().frameChanged.connect(self._resetBaseTransform)
 
 		# Set the default activity
 		self.setActivity(self._app.activities()["Object Detection"])
@@ -104,12 +103,13 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 
 	# Public Interface -----------------------------------------------------------------------------
 
-	def fitToWindow(self) -> None:
+	def recenter(self) -> None:
 		"""
 		Fit the image to the viewport
 		"""
 		self.setZoom(1.0)
 		self.setPan(QPointF(0.5, 0.5))
+
 
 	def activity(self) -> Activity:
 		"""
@@ -177,6 +177,7 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 			return
 		super().mousePressEvent(event)
 
+
 	def mouseMoveEvent(self, event: QMouseEvent) -> None:
 		if self._is_panning:
 			assert self._pan_uv_anchor is not None
@@ -186,15 +187,25 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 			return
 		super().mouseMoveEvent(event)
 
+
 	def mouseReleaseEvent(self, event: QMouseEvent) -> None:
 		self._is_panning = False
 		super().mouseReleaseEvent(event)
 
+
 	def keyPressEvent(self, event: QKeyEvent) -> None:
-		if event.key() == Qt.Key.Key_Space:
-			self.setPan(QPointF(0.0, 0.0))
-			self.setZoom(3.0)
-		super().keyPressEvent(event)
+		media_manager = self._app.mediaManager()
+		frame_index = media_manager.currentFrameIndex()
+		frame_count = media_manager.length()
+		if event.key() == Qt.Key.Key_Left and frame_index > 0:
+			media_manager.setIndex(frame_index - 1)
+			event.accept()
+			return
+		if event.key() == Qt.Key.Key_Right and frame_index < frame_count - 1:
+			media_manager.setIndex(frame_index + 1)
+			event.accept()
+			return
+
 
 	def wheelEvent(self, event: QWheelEvent) -> None:
 		step = 1.0010 ** event.angleDelta().y()

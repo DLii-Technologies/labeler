@@ -7,11 +7,15 @@ from PyQt6.QtGui import (
 	QImage,
 	QPixmap
 )
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import (
+	QFileDialog,
+	QApplication
+)
 
 from . import gen
 from .activity import Activity
 from .activity.object_detection_activity import ObjectDetectionActivity
+from .media_manager import MediaManager
 
 class Application(QApplication):
 
@@ -35,6 +39,8 @@ class Application(QApplication):
 		self.setOrganizationName(manifest["organization"])
 		self.setOrganizationDomain(manifest["organization_domain"])
 
+		self._media_manager = MediaManager()
+
 		self._activities = {
 			Activity.IDENTIFIER: Activity(),
 			ObjectDetectionActivity.IDENTIFIER: ObjectDetectionActivity()
@@ -55,5 +61,9 @@ class Application(QApplication):
 	def activities(self):
 		return self._activities
 
+	def mediaManager(self):
+		return self._media_manager
+
 	def setPixmap(self, image: QPixmap):
 		self.imageChanged.emit(image)
+

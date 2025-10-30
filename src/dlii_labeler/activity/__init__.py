@@ -25,8 +25,6 @@ class Activity(QGraphicsScene):
 	IDENTIFIER = "None"
 	DRAG_THRESHOLD = 5
 
-	frameChanged = pyqtSignal()
-
 	def __init__(self, parent = None) -> None:
 		super().__init__(parent)
 		self._frame = QGraphicsPixmapItem()
@@ -41,6 +39,10 @@ class Activity(QGraphicsScene):
 		self._select_box_item.setZValue(9999)
 		self._is_drag_selecting = False
 		self._is_object_dragging = False
+
+		from ..application import Application
+		self._app = Application.instance()
+		self._app.mediaManager().frameChanged.connect(self.setPixmap)
 
 	def clearSelected(self) -> None:
 		for item in self.selectedItems():
@@ -62,9 +64,6 @@ class Activity(QGraphicsScene):
 
 	def setPixmap(self, image: QPixmap) -> None:
 		self._frame.setPixmap(image)
-		# self._frame.setX(-image.width()/2.0)
-		# self._frame.setY(-image.height()/2.0)
-		self.frameChanged.emit()
 
 	# Event Handling -------------------------------------------------------------------------------
 

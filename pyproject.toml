@@ -1,6 +1,6 @@
 [project]
 name = "dlii-labeler"
-display-name = "DLii Labeler"
+display-name = "Labeler"
 organization = "DLii Technologies"
 organization-domain = "dlii.tech"
 version = "0.0.1"

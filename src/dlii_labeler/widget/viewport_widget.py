@@ -77,13 +77,39 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		self._navigation_step_timer.setInterval(16)  # ~60Hz
 		self._navigation_step_tick_clock = QElapsedTimer()
 
-		self.setActivity(self._app.activities()["Object Detection"])
+		# Toolbar buttons
+		self._activity_button = QToolButton()
+		self._activity_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+		self._activity_menu = QMenu()
+		for activity in self._app.activities().values():
+			action = QAction(activity.IDENTIFIER, self)
+			action.triggered.connect(lambda _, a=activity: self.setActivity(a))
+			self._activity_menu.addAction(action)
+		self._activity_button.setMenu(self._activity_menu)
+		self.activityChanged.connect(lambda activity: self._activity_button.setText(f"Activity: {activity.IDENTIFIER}"))
+
+		self._fit_to_window_action = QAction("Fit to Window", self)
+		self._fit_to_window_action.triggered.connect(self.fitToWindow)
 
 		# Signals and Slots
 		self._app.imageChanged.connect(self._resetBaseTransform)
 
+		# Set the default activity
+		self.setActivity(self._app.activities()["Object Detection"])
+
+	def setupToolBar(self, toolbar: QToolBar) -> None:
+		super().setupToolBar(toolbar)
+		toolbar.addWidget(self._activity_button)
+		toolbar.addAction(self._fit_to_window_action)
 
 	# Public Interface -----------------------------------------------------------------------------
+
+	def fitToWindow(self) -> None:
+		"""
+		Fit the image to the viewport
+		"""
+		self.setZoom(1.0)
+		self.setPan(QPointF(0.5, 0.5))
 
 	def activity(self) -> Activity:
 		"""

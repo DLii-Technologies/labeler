@@ -12,6 +12,7 @@ class Pane(QWidget):
 
 		self.toolbar = QToolBar()
 		layout = QVBoxLayout()
+		layout.setContentsMargins(0, 0, 0, 0)
 		layout.addWidget(self.toolbar)
 		self.setLayout(layout)
 

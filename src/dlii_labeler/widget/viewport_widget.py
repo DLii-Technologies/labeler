@@ -32,7 +32,7 @@ from .pane_widget import PaneWidget
 class ViewportWidget(PaneWidget, QGraphicsView):
 
 	ZOOM_ANIMATION_HALF_LIFE_MS = 45
-	PAN_ANIMATION_HALF_LIFE_MS = 90
+	PAN_ANIMATION_HALF_LIFE_MS = 1000
 
 	activityChanged = pyqtSignal(Activity)
 
@@ -221,7 +221,7 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 			self._zoom_anchor_uv = None
 			return False
 		alpha = 1.0 - pow(0.5, dt_ms/self.ZOOM_ANIMATION_HALF_LIFE_MS)
-		self._zoom_staged = (1.0 - alpha) * self._zoom_current + alpha * self._zoom_target
+		self._zoom_staged = (1.0 - alpha) * self._zoom_current + alpha*self._zoom_target
 		if abs(self._zoom_staged - self._zoom_target) < 1e-3:
 			# Snap to target if we're close enough
 			self._zoom_staged = self._zoom_target
@@ -236,8 +236,11 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 			return False
 
 		alpha = 1.0 - pow(0.5, dt_ms/self.ZOOM_ANIMATION_HALF_LIFE_MS)
-		new_x = (1.0 - alpha) * self._pan_uv_current.x() + alpha * self._pan_uv_target.x()
-		new_y = (1.0 - alpha) * self._pan_uv_current.y() + alpha * self._pan_uv_target.y()
+		# Interpolate based on euclidean distance
+		delta_x = self._pan_uv_target.x() - self._pan_uv_current.x()
+		delta_y = self._pan_uv_target.y() - self._pan_uv_current.y()
+		new_x = self._pan_uv_current.x() + alpha * delta_x
+		new_y = self._pan_uv_current.y() + alpha * delta_y
 		self._pan_uv_staged = QPointF(new_x, new_y)
 
 		if abs(self._pan_uv_staged.x() - self._pan_uv_target.x()) < 1e-3 and \
@@ -279,7 +282,6 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		Applies staged zoom and pan values to make them current.
 		Zooms around an anchor point (zoom_anchor_uv, cursor, or center).
 		"""
-
 		# Get anchor position before zoom
 		if self._zoom_anchor_uv is not None:
 			anchor_view_pos_before = self.mapFromUv(self._zoom_anchor_uv)
@@ -293,14 +295,17 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		viewport_size: QSize = self.viewport().size() # type: ignore
 		viewport_size_uv = self.mapToUv(QPoint(viewport_size.width(), viewport_size.height()))
 		pan = self._uvToScenePosition(self._pan_uv_current - viewport_size_uv/2.0)
-		print(pan)
 		self.translate(-pan.x(), -pan.y())
 
 		# Adjust pan to keep anchor point fixed
-		if self._zoom_anchor_uv is not None:
+		if self._zoom_anchor_uv is not None and self._pan_uv_staged == self._pan_uv_target:
 			delta_uv = self._zoom_anchor_uv - self.mapToUv(anchor_view_pos_before)
 			pan = self._uvToScenePosition(delta_uv)
 			self.translate(-pan.x(), -pan.y()) # type: ignore
+			# Account for the additional pan
+			self._pan_uv_current = self._pan_uv_current + delta_uv
+			self._pan_uv_staged = self._pan_uv_staged + delta_uv
+			self._pan_uv_target = self._pan_uv_target + delta_uv
 
 		# Apply pan
 		pan_uv_delta = (self._pan_uv_staged - self._pan_uv_current)*zoom_factor
@@ -308,50 +313,6 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		self.translate(-pan.x(), -pan.y())
 		self._pan_uv_current = self._pan_uv_staged
 
-
-	# def _applyViewTransform(self):
-	# 	"""
-	# 	Applies staged zoom and pan values to make them current.
-	# 	Zooms around an anchor point (zoom_anchor_uv, cursor, or center).
-	# 	"""
-
-	# 	# Get anchor position before zoom
-	# 	if self._zoom_anchor_uv is not None:
-	# 		anchor_view_pos_before = self.mapFromUv(self._zoom_anchor_uv)
-
-	# 	# Apply zoom
-	# 	self.setTransform(QTransform(self._base_transform))
-	# 	self._zoom_current = self._zoom_staged
-	# 	self.scale(self._zoom_current, self._zoom_current)
-
-	# 	# Apply pan so that (0.5, 0.5) is at the center of the viewport
-	# 	viewport_size: QSize = self.viewport().size() # type: ignore
-	# 	viewport_size_uv = self.mapToUv(QPoint(viewport_size.width(), viewport_size.height()))
-
-	# 	# self._pan_uv_current = self._pan_uv_staged
-	# 	pan = self._uvToScenePosition(self._pan_uv_current - viewport_size_uv/2.0)
-	# 	self.translate(-pan.x(), -pan.y())
-
-	# 	# Adjust pan to keep anchor point fixed
-	# 	if self._zoom_anchor_uv is not None:
-	# 		anchor_view_pos_after = self.mapFromUv(self._zoom_anchor_uv)
-	# 		delta_view = anchor_view_pos_before - anchor_view_pos_after
-	# 		delta_uv = self.mapToUv(QPoint(int(delta_view.x()), int(delta_view.y()))) - self.mapToUv(QPoint(0, 0))
-	# 		self._pan_uv_current = self._pan_uv_current - delta_uv
-	# 		self._pan_uv_staged = self._pan_uv_current
-	# 		self._pan_uv_target = self._pan_uv_current
-
-	# 		# Reapply transform with corrected pan
-	# 		self.setTransform(QTransform(self._base_transform))
-	# 		self.scale(self._zoom_current, self._zoom_current)
-	# 		pan = self._uvToScenePosition(self._pan_uv_current - viewport_size_uv/2.0)
-	# 		self.translate(-pan.x(), -pan.y())
-
-	# 	# Apply remaining pan
-	# 	pan_delta = self._pan_uv_staged - self._pan_uv_current
-	# 	pan = self._uvToScenePosition(pan_delta)
-	# 	self.translate(-pan.x(), -pan.y())
-	# 	self._pan_uv_current = self._pan_uv_staged
 
 	def _resetBaseTransform(self):
 		"""

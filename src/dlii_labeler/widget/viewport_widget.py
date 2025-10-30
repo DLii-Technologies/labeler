@@ -51,8 +51,8 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
 		# Set scene rect to infinite
-		# self.setSceneRect(-float("inf"), -float("inf"), float("inf"), float("inf"))
-		self.setSceneRect(-1e10, -1e10, 2e10, 2e10)
+		self.setSceneRect(-float("inf"), -float("inf"), float("inf"), float("inf"))
+		# self.setSceneRect(-1e10, -1e10, 2e10, 2e10)
 
 		from ..application import Application
 		self._app = Application.instance()

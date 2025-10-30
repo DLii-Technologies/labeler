@@ -22,6 +22,7 @@ class MainWindow(QMainWindow):
         self._viewport = Pane()
         self._viewport.setWidget(ViewportWidget())
         self.setCentralWidget(self._viewport)
+        # self._viewport.fitToWindow()
 
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)

@@ -1,19 +1,16 @@
 from PyQt6.QtCore import (
 	QRectF,
-	QPoint,
 	QPointF,
 	Qt
 )
 from PyQt6.QtGui import (
 	QColor,
 	QPainter,
-	QPainterPath,
 	QPen
 )
 from PyQt6.QtWidgets import (
 	QGraphicsItem,
 	QGraphicsRectItem,
-	QGraphicsSceneEvent,
 	QGraphicsSceneHoverEvent,
 	QGraphicsSceneMouseEvent,
 	QGraphicsView,

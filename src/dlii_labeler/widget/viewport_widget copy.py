@@ -31,8 +31,7 @@ from .pane_widget import PaneWidget
 
 class ViewportWidget(PaneWidget, QGraphicsView):
 
-	ZOOM_ANIMATION_HALF_LIFE_MS = 45
-	PAN_ANIMATION_HALF_LIFE_MS = 90
+	ANIMATION_HALF_LIFE_MS = 45
 
 	activityChanged = pyqtSignal(Activity)
 
@@ -42,17 +41,12 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		# self.setAlignment(Qt.AlignmentFlag.AlignAbsolute)
 		self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
 
-		# Anchoring
 		self.setTransformationAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
-		self.setResizeAnchor(QGraphicsView.ViewportAnchor.NoAnchor)
+		self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
 
 		# Disable scrollbars
-		self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-		self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-
-		# Set scene rect to infinite
-		# self.setSceneRect(-float("inf"), -float("inf"), float("inf"), float("inf"))
-		self.setSceneRect(-1e10, -1e10, 2e10, 2e10)
+		# self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+		# self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
 		from ..application import Application
 		self._app = Application.instance()
@@ -166,8 +160,7 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 
 	def keyPressEvent(self, event: QKeyEvent) -> None:
 		if event.key() == Qt.Key.Key_Space:
-			self.setPan(QPointF(0.0, 0.0))
-			self.setZoom(3.0)
+			self.setPan(self._pan_uv_current + QPointF(0.1, 0.1), instant=True)
 		super().keyPressEvent(event)
 
 	def wheelEvent(self, event: QWheelEvent) -> None:
@@ -187,7 +180,7 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		instant: bool = False,
 		_apply: bool = True
 	):
-		self._pan_uv_target = pan
+		self._pan_uv_target = self._clampPan(pan)
 		if instant:
 			self._pan_uv_staged = self._pan_uv_target
 			if _apply:
@@ -220,7 +213,7 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		if self._zoom_current == self._zoom_target:
 			self._zoom_anchor_uv = None
 			return False
-		alpha = 1.0 - pow(0.5, dt_ms/self.ZOOM_ANIMATION_HALF_LIFE_MS)
+		alpha = 1.0 - pow(0.5, dt_ms/self.ANIMATION_HALF_LIFE_MS)
 		self._zoom_staged = (1.0 - alpha) * self._zoom_current + alpha * self._zoom_target
 		if abs(self._zoom_staged - self._zoom_target) < 1e-3:
 			# Snap to target if we're close enough
@@ -235,7 +228,7 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		if self._pan_uv_current == self._pan_uv_target:
 			return False
 
-		alpha = 1.0 - pow(0.5, dt_ms/self.ZOOM_ANIMATION_HALF_LIFE_MS)
+		alpha = 1.0 - pow(0.5, dt_ms/self.ANIMATION_HALF_LIFE_MS)
 		new_x = (1.0 - alpha) * self._pan_uv_current.x() + alpha * self._pan_uv_target.x()
 		new_y = (1.0 - alpha) * self._pan_uv_current.y() + alpha * self._pan_uv_target.y()
 		self._pan_uv_staged = QPointF(new_x, new_y)
@@ -279,79 +272,94 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		Applies staged zoom and pan values to make them current.
 		Zooms around an anchor point (zoom_anchor_uv, cursor, or center).
 		"""
-
-		# Get anchor position before zoom
-		if self._zoom_anchor_uv is not None:
-			anchor_view_pos_before = self.mapFromUv(self._zoom_anchor_uv)
-
-		zoom_factor = self._zoom_staged / self._zoom_current
-
-		# Rebuild the current transform for numerical stability
-		self.setTransform(QTransform(self._base_transform))
+		# Apply zoom
+		transform = QTransform(self._base_transform)
 		self._zoom_current = self._zoom_staged
-		self.scale(self._zoom_current, self._zoom_current)
-		viewport_size: QSize = self.viewport().size() # type: ignore
-		viewport_size_uv = self.mapToUv(QPoint(viewport_size.width(), viewport_size.height()))
-		pan = self._uvToScenePosition(self._pan_uv_current - viewport_size_uv/2.0)
-		print(pan)
-		self.translate(-pan.x(), -pan.y())
-
-		# Adjust pan to keep anchor point fixed
-		if self._zoom_anchor_uv is not None:
-			delta_uv = self._zoom_anchor_uv - self.mapToUv(anchor_view_pos_before)
-			pan = self._uvToScenePosition(delta_uv)
-			self.translate(-pan.x(), -pan.y()) # type: ignore
+		transform.scale(self._zoom_current, self._zoom_current)
+		self.setTransform(transform)
+		self._updateSceneRect()
 
 		# Apply pan
-		pan_uv_delta = (self._pan_uv_staged - self._pan_uv_current)*zoom_factor
-		pan = self._uvToScenePosition(pan_uv_delta)
+		self._pan_uv_current = self._clampPan(self._pan_uv_staged)
+		print(f"Panning to {self._pan_uv_current}", self._frameSize(), self.mapFromUv(self._pan_uv_current))
+		pan = self.uvUnitToSceneUnit(self._pan_uv_current)
 		self.translate(-pan.x(), -pan.y())
-		self._pan_uv_current = self._pan_uv_staged
+
+		# self.centerOn(self._uvToScenePosition(self._pan_uv_current))
+
+		# anchor = self._zoom_anchor_uv
+		# if anchor is not None:
+		# 	anchor_scene_pos = self._uvToScenePosition(anchor)
+
+		# # Rebuild the current transform from known values
+		# transform = QTransform(self._base_transform)
+		# transform.scale(self._zoom_current, self._zoom_current)
+		# pan = self.uvUnitToSceneUnit(self._pan_uv_current)
+		# transform.translate(-pan.x(), -pan.y())
+
+		# print("Rebuilt Transform")
+		# for i in range(3):
+		# 	for j in range(3):
+		# 		print(f"{getattr(transform, f'm{i+1}{j+1}')():.2f}", end=" ")
+		# 	print()
+		# transform = self.transform()
+		# print("Current")
+		# for i in range(3):
+		# 	for j in range(3):
+		# 		print(f"{getattr(transform, f'm{i+1}{j+1}')():.2f}", end=" ")
+		# 	print()
+
+		# # Zoom
+		# if anchor is not None:
+		# 	transform.translate(+anchor_scene_pos.x(), +anchor_scene_pos.y())
+		# factor = self._zoom_staged / self._zoom_current
+		# transform.scale(factor, factor)
+		# if anchor is not None:
+		# 	transform.translate(-anchor_scene_pos.x(), -anchor_scene_pos.y())
+		# self._zoom_current = self._zoom_staged
+		# self.setTransform(transform)
+		# self._updateSceneRect()
+
+		# Apply pan
+		# self._pan_uv_staged = self._clampPan(self._pan_uv_staged)
+		# delta = self._uvToScenePosition(self._pan_uv_staged) - self._uvToScenePosition(self._pan_uv_current)
+		# self.translate(-delta.x(), -delta.y())
+		# self._pan_uv_current = self._pan_uv_staged
 
 
-	# def _applyViewTransform(self):
-	# 	"""
-	# 	Applies staged zoom and pan values to make them current.
-	# 	Zooms around an anchor point (zoom_anchor_uv, cursor, or center).
-	# 	"""
 
-	# 	# Get anchor position before zoom
-	# 	if self._zoom_anchor_uv is not None:
-	# 		anchor_view_pos_before = self.mapFromUv(self._zoom_anchor_uv)
+	def _clampPan(self, pan_uv: QPointF) -> QPointF:
+		"""
+		Clamp a normalized pan (viewport center in U/V) to the valid range for the
+		current zoom and viewport size. No side effects; returns the clamped U/V.
+		"""
+		# Viewport size in pixels
+		vp_w = self.viewport().width()
+		vp_h = self.viewport().height()
 
-	# 	# Apply zoom
-	# 	self.setTransform(QTransform(self._base_transform))
-	# 	self._zoom_current = self._zoom_staged
-	# 	self.scale(self._zoom_current, self._zoom_current)
+		# Map viewport basis to normalized scene to get visible span in U/V
+		p00 = self.mapToUv(QPoint(0, 0))
+		p10 = self.mapToUv(QPoint(vp_w, 0))
+		p01 = self.mapToUv(QPoint(0, vp_h))
 
-	# 	# Apply pan so that (0.5, 0.5) is at the center of the viewport
-	# 	viewport_size: QSize = self.viewport().size() # type: ignore
-	# 	viewport_size_uv = self.mapToUv(QPoint(viewport_size.width(), viewport_size.height()))
+		vis_u = abs(p10.x() - p00.x())  # viewport width in normalized coords
+		vis_v = abs(p01.y() - p00.y())  # viewport height in normalized coords
 
-	# 	# self._pan_uv_current = self._pan_uv_staged
-	# 	pan = self._uvToScenePosition(self._pan_uv_current - viewport_size_uv/2.0)
-	# 	self.translate(-pan.x(), -pan.y())
+		# Scene rect (in normalized coords) was expanded to [-vis_u, 1+vis_u] × [-vis_v, 1+vis_v].
+		# To keep the *viewport* fully inside that rect, the center must lie within:
+		#   U in [ -vis_u + vis_u/2, 1 + vis_u - vis_u/2 ] == [ -vis_u/2, 1 + vis_u/2 ]
+		#   V in [ -vis_v/2, 1 + vis_v/2 ]
+		u_min = -vis_u * 0.5
+		u_max = 1.0 + vis_u * 0.5
+		v_min = -vis_v * 0.5
+		v_max = 1.0 + vis_v * 0.5
 
-	# 	# Adjust pan to keep anchor point fixed
-	# 	if self._zoom_anchor_uv is not None:
-	# 		anchor_view_pos_after = self.mapFromUv(self._zoom_anchor_uv)
-	# 		delta_view = anchor_view_pos_before - anchor_view_pos_after
-	# 		delta_uv = self.mapToUv(QPoint(int(delta_view.x()), int(delta_view.y()))) - self.mapToUv(QPoint(0, 0))
-	# 		self._pan_uv_current = self._pan_uv_current - delta_uv
-	# 		self._pan_uv_staged = self._pan_uv_current
-	# 		self._pan_uv_target = self._pan_uv_current
+		print(u_min, u_max, v_min, v_max)
 
-	# 		# Reapply transform with corrected pan
-	# 		self.setTransform(QTransform(self._base_transform))
-	# 		self.scale(self._zoom_current, self._zoom_current)
-	# 		pan = self._uvToScenePosition(self._pan_uv_current - viewport_size_uv/2.0)
-	# 		self.translate(-pan.x(), -pan.y())
+		u = max(u_min, min(pan_uv.x(), u_max))
+		v = max(v_min, min(pan_uv.y(), v_max))
+		return QPointF(u, v)
 
-	# 	# Apply remaining pan
-	# 	pan_delta = self._pan_uv_staged - self._pan_uv_current
-	# 	pan = self._uvToScenePosition(pan_delta)
-	# 	self.translate(-pan.x(), -pan.y())
-	# 	self._pan_uv_current = self._pan_uv_staged
 
 	def _resetBaseTransform(self):
 		"""
@@ -364,6 +372,54 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		scale_factor = min(self.width()/frame_size.width(), self.height()/frame_size.height())
 		self._base_transform.scale(scale_factor, scale_factor)
 		self._applyViewTransform()
+
+
+	def _updateSceneRect(self):
+		"""
+		Ensures the scene rect is large enough so that we can pan the frame
+		just outside the viewport, regardless of the current zoom.
+
+		Call whenever image size, window size, or zoom changes.
+		"""
+		activity = self.scene()
+		if activity is None:
+			return
+
+		# --- how much of the frame fits in the viewport *in normalized coords*?
+		# normalized (U,V) width/height of the *visible* viewport
+		vp_w = self.viewport().width()
+		vp_h = self.viewport().height()
+
+		# map three viewport points to normalized-scene space
+		p00 = self.mapToUv(QPoint(0, 0))
+		p10 = self.mapToUv(QPoint(vp_w, 0))
+		p01 = self.mapToUv(QPoint(0, vp_h))
+
+		# visible size in normalized units (U,V). This automatically accounts
+		# for base transform + user zoom.
+		vis_u = abs(p10.x() - p00.x())
+		vis_v = abs(p01.y() - p00.y())
+
+		# we want to be able to pan so the frame can sit just outside the viewport.
+		# that's exactly the old logic: add a margin equal to the viewport size
+		# (expressed in scene units). In normalized space the frame is [0,1]x[0,1],
+		# so expand to [-vis_u, 1+vis_u] x [-vis_v, 1+vis_v].
+		ul_norm = QPointF(-vis_u, -vis_v)        # upper-left in normalized coords
+		br_norm = QPointF(1.0 + vis_u, 1.0 + vis_v)  # bottom-right in normalized coords
+
+		# convert back to *scene* coordinates (pixel-ish, centered on the frame)
+		ul_scene = self._uvToScenePosition(ul_norm)
+		br_scene = self._uvToScenePosition(br_norm)
+
+		# set the scene rect in scene coordinates
+		self.setSceneRect(
+			ul_scene.x(),
+			ul_scene.y(),
+			br_scene.x() - ul_scene.x(),
+			br_scene.y() - ul_scene.y(),
+		)
+
+		self._pan_uv_current = self._clampPan(self._pan_uv_current)
 
 
 	def _frameSize(self) -> QSize:

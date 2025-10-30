@@ -1,9 +1,11 @@
 from dataclasses import dataclass
+import sys
 from typing import List, Optional
 from PyQt6.QtCore import (
 	Qt,
 	QPoint,
 	QPointF,
+	pyqtSignal
 )
 from PyQt6.QtGui import (
 	QColor,
@@ -23,20 +25,12 @@ class Activity(QGraphicsScene):
 	IDENTIFIER = "None"
 	DRAG_THRESHOLD = 5
 
-	@dataclass
-	class PressContext:
-		movement: str
-		screen_pos: QPoint
-		scene_pos: QPointF
-		button: Qt.MouseButton
-		modifiers: Qt.KeyboardModifier
+	frameChanged = pyqtSignal()
 
 	def __init__(self, parent = None) -> None:
 		super().__init__(parent)
 		self._frame = QGraphicsPixmapItem()
 		self.addItem(self._frame)
-
-		self._mouse_press_state: Optional[Activity.PressContext] = None
 
 		self._current_selection: set[QGraphicsItem] = set()
 
@@ -68,14 +62,11 @@ class Activity(QGraphicsScene):
 
 	def setPixmap(self, image: QPixmap) -> None:
 		self._frame.setPixmap(image)
+		# self._frame.setX(-image.width()/2.0)
+		# self._frame.setY(-image.height()/2.0)
+		self.frameChanged.emit()
 
 	# Event Handling -------------------------------------------------------------------------------
-
-	def cancelMousePress(self, ) -> None:
-		if self._mouse_press_state is None:
-			return
-		self._mouse_press_state = None
-
 
 	def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
 		if event.button() == Qt.MouseButton.LeftButton and event.modifiers() == Qt.KeyboardModifier.ShiftModifier:

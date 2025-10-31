@@ -190,11 +190,12 @@ class KeyframeableGraphicsItem(SaveableGraphicsItem, Generic[T]):
 		Get the state for the given frame index. If no frame index is provided,
 		the current frame index is used.
 		"""
-		if len(self._keyframes) == 0 or frame_index is None:
+		if len(self._keyframes) == 0:
 			return self.currentState()
 
 		# Clamp keyframe index
 		left, right = cast(Tuple[int, int], self.keyframeRange())
+		frame_index = frame_index if frame_index is not None else self.currentFrameIndex()
 		frame_index = min(max(frame_index, left), right)
 
 		if frame_index in self._keyframes:

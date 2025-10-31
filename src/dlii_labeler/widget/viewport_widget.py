@@ -139,6 +139,12 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		"""
 		self._setPan(pan, instant, _apply=True)
 
+	def isZooming(self) -> bool:
+		"""
+		Check if we are currently zooming
+		"""
+		return self._zoom_current != self._zoom_target
+
 
 	def zoom(self) -> float:
 		"""

@@ -71,6 +71,9 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 		self._resizing = False
 		self._resizing_handle = self.Sides.NONE
 
+		self._press_rect = QRectF()
+		self._press_anchor = QPointF()
+
 
 	def load(self, data: Dict):
 		super().load(data)
@@ -150,6 +153,7 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 
 	def mousePressEvent(self, event: QGraphicsSceneMouseEvent):
 		self._press_rect = self.boundingRect()
+		self._press_anchor = event.pos()
 		if (
 			event.button() == Qt.MouseButton.LeftButton
 			and event.modifiers() in (
@@ -160,6 +164,7 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 			view: QGraphicsView = event.widget().parent() # type: ignore
 			handle = self._handleAt(view, event.pos())
 			if handle != self.Sides.NONE:
+				print(self._press_rect)
 				self._resizing = True
 				self._resizing_handle = handle
 				if not event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
@@ -171,26 +176,22 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 
 
 	def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent):
-		if self._resizing:
-			delta = event.pos() - event.lastPos()
-			rect = self.rect()
+		if self._resizing: # type: ignore
+			delta = event.pos() - self._press_anchor
+			rect = QRectF(self._press_rect)
 
 			if self._resizing_handle & self.Sides.W:
-				new_left = self.rect().left() + delta.x()
-				if self.rect().right() - new_left >= self.MIN_SIZE:
-					rect.setLeft(new_left)
-			elif self._resizing_handle & self.Sides.E:
-				new_right = self.rect().right() + delta.x()
-				if new_right - self.rect().left() >= self.MIN_SIZE:
-					rect.setRight(new_right)
+				new_left = self._press_rect.left() + delta.x()
+				rect.setLeft(min(new_left, self._press_rect.right() - self.MIN_SIZE))
+			if self._resizing_handle & self.Sides.E:
+				new_right = self._press_rect.right() + delta.x()
+				rect.setRight(max(new_right, self._press_rect.left() + self.MIN_SIZE))
 			if self._resizing_handle & self.Sides.N:
-				new_top = self.rect().top() + delta.y()
-				if self.rect().bottom() - new_top >= self.MIN_SIZE:
-					rect.setTop(new_top)
-			elif self._resizing_handle & self.Sides.S:
-				new_bottom = self.rect().bottom() + delta.y()
-				if new_bottom - self.rect().top() >= self.MIN_SIZE:
-					rect.setBottom(new_bottom)
+				new_top = self._press_rect.top() + delta.y()
+				rect.setTop(min(new_top, self._press_rect.bottom() - self.MIN_SIZE))
+			if self._resizing_handle & self.Sides.S:
+				new_bottom = self._press_rect.bottom() + delta.y()
+				rect.setBottom(max(new_bottom, self._press_rect.top() + self.MIN_SIZE))
 
 			self.prepareGeometryChange()
 			self.setRect(rect)
@@ -212,18 +213,21 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 
 	def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget=None):
 		pen = QPen()
-		pen.setWidth(1)
+		pen.setWidth(2)
 		brush = None
 		if option.state & QStyle.StateFlag.State_Selected:
-			brush = QColor(0, 255, 0, 24)
+			# brush = QColor(0, 255, 0, 24)
 			pen.setStyle(Qt.PenStyle.DashLine)
 
+		color = QColor(192, 192, 192)
 		if self.isInterpolated():
-			pen.setColor(QColor(0, 0, 255))
+			color = QColor(0, 0, 255)
 		elif self.isKeyframed():
-			pen.setColor(QColor(0, 255, 0))
-		else:
-			pen.setColor(QColor(192, 192, 192))
+			if self.currentState() == self.stateForFrame():
+				color = QColor(0, 255, 0)
+			else:
+				color = QColor(255, 255, 0)
+		pen.setColor(color)
 		pen.setCosmetic(True)
 
 		painter.setPen(pen)

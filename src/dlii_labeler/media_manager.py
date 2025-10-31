@@ -92,8 +92,8 @@ class MediaManager(QObject):
 		return self._current_index
 
 
-	def imageCount(self) -> int:
-		return len(self._image_paths)
+	def imagePaths(self) -> List[Path]:
+		return self._image_paths
 
 
 	@lru_cache(maxsize=128)

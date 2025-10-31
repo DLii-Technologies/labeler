@@ -20,6 +20,7 @@ from . import gen
 from .activity import Activity
 from .activity.object_detection_activity import ObjectDetectionActivity
 from .data_store import DataStore
+from .export.yolo_exporter import YoloExporter
 from .media_manager import MediaManager
 
 class Application(QApplication):
@@ -51,9 +52,12 @@ class Application(QApplication):
 			Activity.IDENTIFIER: Activity(),
 			ObjectDetectionActivity.IDENTIFIER: ObjectDetectionActivity()
 		}
-
 		for activity in self._activities.values():
 			self.imageChanged.connect(activity.setPixmap)
+
+		self._exporters = {
+			YoloExporter.IDENTIFIER: YoloExporter()
+		}
 
 		w, h = 1280, 720
 		image = QImage(w, h, QImage.Format.Format_RGB32)
@@ -73,6 +77,9 @@ class Application(QApplication):
 	def mediaManager(self) -> MediaManager:
 		return self._media_manager
 
+	def folderPath(self) -> Path:
+		return self._folder_path
+
 	def setPixmap(self, image: QPixmap):
 		self.imageChanged.emit(image)
 
@@ -82,6 +89,7 @@ class Application(QApplication):
 			folder_path = QFileDialog.getExistingDirectory(parent, "Open Folder")
 			if not folder_path:
 				return False
+		self._folder_path = Path(folder_path)
 		self._media_manager.setFolder(folder_path)
 		self._data_store = DataStore(folder_path)
 		self.folderOpened.emit(folder_path)

@@ -1,8 +1,5 @@
 [project]
 name = "dlii-labeler"
-display-name = "Labeler"
-organization = "DLii Technologies"
-organization-domain = "dlii.tech"
 version = "0.0.1"
 authors = [
   { name="David W. Ludwig II", email="davidludwigii@gmail.com" }
@@ -14,9 +11,15 @@ requires-python = ">=3.11"
 dependencies = [
   "opencv-python",
   "PyQt6>=6.10.0",
+  "sortedcontainers",
   "torch>=2.5.1",
   "ultralytics",
 ]
+
+[manifest]
+display-name = "Labeler"
+organization = "DLii Technologies"
+organization-domain = "dlii.tech"
 
 # Development dependencies
 [project.optional-dependencies]

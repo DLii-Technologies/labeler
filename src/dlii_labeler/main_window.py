@@ -43,6 +43,10 @@ class MainWindow(QMainWindow):
 		open_folder_action.triggered.connect(self.openFolder)
 		file_menu.addAction(open_folder_action)
 		file_menu.addSeparator()
+
+		export_menu = file_menu.addMenu("&Export")
+		export_menu.addAction("YOLO", self._app._exporters["YOLO"].show)
+		file_menu.addSeparator()
 		file_menu.addAction("Exit", self.close)
 
 

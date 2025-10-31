@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import Dict
 from PyQt6.QtCore import (
 	QRectF,
@@ -19,13 +20,20 @@ from PyQt6.QtWidgets import (
 	QStyleOptionGraphicsItem
 )
 
-from . import Activity, KeyframeableGraphicsItem, SerializableGraphicsItem
+from . import Activity, Keyframe, KeyframeableGraphicsItem, SaveableGraphicsItem
 
-class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SerializableGraphicsItem):
+class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem):
 
 	MIN_HANDLE_MARGIN = 6
 	HANDLE_SIZE = 6
 	MIN_SIZE = 1.0
+
+	@dataclass
+	class State:
+		u: float
+		v: float
+		width: float
+		height: float
 
 	class Sides:
 		NONE = 0
@@ -46,11 +54,7 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SerializableGraphicsI
 		Sides.S | Sides.W: Qt.CursorShape.SizeBDiagCursor
 	}
 
-	@classmethod
-	def deserialize(cls, data: Dict) -> "BoxItem":
-		return cls(QRectF(data["x"], data["y"], data["width"], data["height"]), data["label"])
-
-	def __init__(self, rect: QRectF, label: str = "", parent=None):
+	def __init__(self, rect: QRectF = QRectF(), label: str = "", parent=None):
 		# adjust rect so that top-left is (0.0, 0.0)
 		pos = rect.topLeft()
 		rect = QRectF(rect.topLeft() - rect.topLeft(), rect.bottomRight() - rect.topLeft())
@@ -67,14 +71,37 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SerializableGraphicsI
 		self._resizing = False
 		self._resizing_handle = self.Sides.NONE
 
-	def serialize(self) -> Dict:
-		return {
-			"x": self.x(),
-			"y": self.y(),
-			"width": self.rect().width(),
-			"height": self.rect().height(),
+
+	def load(self, data: Dict):
+		super().load(data)
+		self.setPos(self.fromU(data["u"]), self.fromV(data["v"]))
+		self.setRect(QRectF(0, 0, self.fromU(data["width"]), self.fromV(data["height"])))
+		self.label = data["label"]
+
+
+	def dump(self) -> Dict:
+		return super().dump() | {
+			"u": self.u(),
+			"v": self.v(),
+			"width": self.toU(self.rect().width()),
+			"height": self.toV(self.rect().height()),
 			"label": self.label
 		}
+
+
+	def currentState(self) -> State:
+		return self.State(
+			self.u(),
+			self.v(),
+			self.toU(self.rect().width()),
+			self.toV(self.rect().height())
+		)
+
+
+	def setState(self, data: State):
+		self.prepareGeometryChange()
+		self.setUvPos(data.u, data.v)
+		self.setRect(QRectF(0, 0, self.fromU(data.width), self.fromV(data.height)))
 
 
 	def _handleAt(self, view: QGraphicsView, pos: QPointF):
@@ -184,14 +211,19 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SerializableGraphicsI
 
 
 	def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget=None):
-
+		pen = QPen()
+		pen.setWidth(1)
+		brush = None
 		if option.state & QStyle.StateFlag.State_Selected:
-			pen = QPen(QColor(0, 255, 0), 1)
 			brush = QColor(0, 255, 0, 24)
-		else:
-			pen = QPen(QColor(0, 255, 0), 1)
-			brush = None
+			pen.setStyle(Qt.PenStyle.DashLine)
 
+		if self.isInterpolated():
+			pen.setColor(QColor(0, 0, 255))
+		elif self.isKeyframed():
+			pen.setColor(QColor(0, 255, 0))
+		else:
+			pen.setColor(QColor(192, 192, 192))
 		pen.setCosmetic(True)
 
 		painter.setPen(pen)

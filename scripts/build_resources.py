@@ -13,10 +13,10 @@ if not Path("./resources/gen").exists():
 with open("./resources/gen/manifest.json", "w") as f:
     json.dump({
         "name": toml["project"]["name"],
-        "display_name": toml["project"]["display-name"],
+        "display_name": toml["manifest"]["display-name"],
         "version": toml["project"]["version"],
-        "organization": toml["project"]["organization"],
-        "organization_domain": toml["project"]["organization-domain"]
+        "organization": toml["manifest"]["organization"],
+        "organization_domain": toml["manifest"]["organization-domain"]
     }, f)
 
 subprocess.run(["rcc", "-g", "python", "resources/resources.qrc", "-o", OUTPUT_PATH])

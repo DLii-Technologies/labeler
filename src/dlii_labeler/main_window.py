@@ -1,16 +1,12 @@
-from pathlib import Path
 from PyQt6.QtGui import (
 	QIcon
 )
 from PyQt6.QtWidgets import (
-	QFileDialog,
 	QLabel,
 	QMainWindow,
 	QMenuBar,
-	QMessageBox,
 	QStatusBar,
 )
-from .media_manager import MediaManager
 from .widget.pane import Pane
 from .widget.viewport_widget import ViewportWidget
 
@@ -42,7 +38,6 @@ class MainWindow(QMainWindow):
 		from PyQt6.QtGui import QAction, QKeySequence
 
 		file_menu = self._menu_bar.addMenu("&File")
-		# file_menu.addAction("Add Media", self.addMedia)
 		open_folder_action = QAction("Open Folder", self)
 		open_folder_action.setShortcut(QKeySequence("Ctrl+O"))
 		open_folder_action.triggered.connect(self.openFolder)
@@ -52,17 +47,16 @@ class MainWindow(QMainWindow):
 
 
 	def _populateStatusBar(self):
-		self._status_frames = QLabel("Frame: 0 / 0")
+		index = self._app.mediaManager().index()
+		self._status_frames = QLabel(f"Frame: {index + 1} / {self._app.mediaManager().length()}")
 		self._status_bar.addPermanentWidget(self._status_frames)
 		self._app.mediaManager().frameIndexChanged.connect(self._onFrameChanged)
 
+		self._onFrameChanged(self._app.mediaManager().index())
 
-	def openFolder(self):
-		# Open a file dialog to select a folder of images
-		folder_path = QFileDialog.getExistingDirectory(self, "Open Folder")
-		if not folder_path:
-			return
-		self._app.mediaManager().setFolder(folder_path)
+
+	def openFolder(self) -> bool:
+		return self._app.openFolder(parent=self)
 
 
 	def _onFrameChanged(self, index: int):

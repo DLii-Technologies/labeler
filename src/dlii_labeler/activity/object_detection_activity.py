@@ -1,3 +1,4 @@
+from typing import Dict
 from PyQt6.QtCore import (
 	QRectF,
 	QPointF,
@@ -18,9 +19,9 @@ from PyQt6.QtWidgets import (
 	QStyleOptionGraphicsItem
 )
 
-from . import Activity
+from . import Activity, KeyframeableGraphicsItem, SerializableGraphicsItem
 
-class BoxItem(QGraphicsRectItem):
+class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SerializableGraphicsItem):
 
 	MIN_HANDLE_MARGIN = 6
 	HANDLE_SIZE = 6
@@ -45,6 +46,9 @@ class BoxItem(QGraphicsRectItem):
 		Sides.S | Sides.W: Qt.CursorShape.SizeBDiagCursor
 	}
 
+	@classmethod
+	def deserialize(cls, data: Dict) -> "BoxItem":
+		return cls(QRectF(data["x"], data["y"], data["width"], data["height"]), data["label"])
 
 	def __init__(self, rect: QRectF, label: str = "", parent=None):
 		# adjust rect so that top-left is (0.0, 0.0)
@@ -62,6 +66,15 @@ class BoxItem(QGraphicsRectItem):
 		self.setAcceptHoverEvents(True)
 		self._resizing = False
 		self._resizing_handle = self.Sides.NONE
+
+	def serialize(self) -> Dict:
+		return {
+			"x": self.x(),
+			"y": self.y(),
+			"width": self.rect().width(),
+			"height": self.rect().height(),
+			"label": self.label
+		}
 
 
 	def _handleAt(self, view: QGraphicsView, pos: QPointF):
@@ -109,6 +122,7 @@ class BoxItem(QGraphicsRectItem):
 
 
 	def mousePressEvent(self, event: QGraphicsSceneMouseEvent):
+		self._press_rect = self.boundingRect()
 		if (
 			event.button() == Qt.MouseButton.LeftButton
 			and event.modifiers() in (
@@ -159,6 +173,8 @@ class BoxItem(QGraphicsRectItem):
 
 
 	def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent):
+		if self._press_rect != self.rect():
+			self.scene().changed.emit() # type: ignore
 		if self._resizing:
 			self._resizing = False
 			self._resizing_handle = self.Sides.NONE
@@ -223,23 +239,19 @@ class ObjectDetectionActivity(Activity):
 
 	def __init__(self, parent = None) -> None:
 		super().__init__(parent)
-		self._boxes = set()
-
 		self._create_box_item = QGraphicsRectItem()
 		self._create_box_item.setPen(QPen(QColor(255, 255, 0), 1))
 		self._create_box_item.setBrush(QColor(255, 255, 0, 128))
 		self._create_box_item.setZValue(9999)
 		self._is_creating = False
 
-		self.createBox(QRectF(100, 100, 200, 200))
-
 
 	def createBox(self, rect: QRectF, select: bool = True):
 		box = BoxItem(rect)
 		self.addItem(box)
-		self._boxes.add(box)
 		if select:
 			box.setSelected(True)
+		self.changed.emit()
 
 
 	def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:

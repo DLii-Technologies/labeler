@@ -1,4 +1,6 @@
 import json
+from pathlib import Path
+from typing import Dict, Optional, Union
 from PyQt6.QtCore import (
 	QFile,
 	pyqtSignal
@@ -8,17 +10,21 @@ from PyQt6.QtGui import (
 	QPixmap
 )
 from PyQt6.QtWidgets import (
+	QApplication,
 	QFileDialog,
-	QApplication
+	QMessageBox,
+	QWidget
 )
 
 from . import gen
 from .activity import Activity
 from .activity.object_detection_activity import ObjectDetectionActivity
+from .data_store import DataStore
 from .media_manager import MediaManager
 
 class Application(QApplication):
 
+	folderOpened = pyqtSignal(str)
 	imageChanged = pyqtSignal(QPixmap)
 
 	@classmethod
@@ -58,12 +64,35 @@ class Application(QApplication):
 				image.setPixel(x, y, (255 << 24) | (r << 16) | (line << 8) | 32)
 		self.setPixmap(QPixmap.fromImage(image))
 
-	def activities(self):
+	def activities(self) -> Dict[str, Activity]:
 		return self._activities
 
-	def mediaManager(self):
+	def dataStore(self) -> DataStore:
+		return self._data_store
+
+	def mediaManager(self) -> MediaManager:
 		return self._media_manager
 
 	def setPixmap(self, image: QPixmap):
 		self.imageChanged.emit(image)
 
+	def openFolder(self, folder_path: Optional[Union[Path, str]] = None, parent: Optional[QWidget] = None) -> False:
+		if not folder_path is not None:
+			# Open a file dialog to select a folder of images
+			folder_path = QFileDialog.getExistingDirectory(parent, "Open Folder")
+			if not folder_path:
+				return False
+		self._media_manager.setFolder(folder_path)
+		self._data_store = DataStore(folder_path)
+		self.folderOpened.emit(folder_path)
+		if not self.dataStore().checkVersion():
+			# Alert the user the data may be incompatible. Ask to continue
+			if QMessageBox.warning(
+				parent,
+				"Warning",
+				"Data store version mismatch. Data may be incompatible. Continue?",
+				QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+			) == QMessageBox.StandardButton.No:
+				self.exit()
+				return False
+		return True

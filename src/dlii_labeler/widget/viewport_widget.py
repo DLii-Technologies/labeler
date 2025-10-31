@@ -161,12 +161,12 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 	# Input Handling -------------------------------------------------------------------------------
 
 	def mousePressEvent(self, event: QMouseEvent) -> None:
-		print(
-			"Scene position:\n",
-			"\tU/V:", self.mapToUv(event.position().toPoint()), "\n",
-			"\tScene:", self.mapToScene(event.position().toPoint()), "\n",
-			"\tViewport:", event.position().toPoint()
-		)
+		# print(
+		# 	"Scene position:\n",
+		# 	"\tU/V:", self.mapToUv(event.position().toPoint()), "\n",
+		# 	"\tScene:", self.mapToScene(event.position().toPoint()), "\n",
+		# 	"\tViewport:", event.position().toPoint()
+		# )
 		if event.button() == Qt.MouseButton.MiddleButton or (
 			event.button() == Qt.MouseButton.LeftButton and
 			event.modifiers() & Qt.KeyboardModifier.AltModifier
@@ -205,6 +205,14 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 			media_manager.setIndex(frame_index + 1)
 			event.accept()
 			return
+		# Filter
+		if event.key() not in (
+			Qt.Key.Key_Left,
+			Qt.Key.Key_Right,
+			Qt.Key.Key_Up,
+			Qt.Key.Key_Down
+		):
+			super().keyPressEvent(event)
 
 
 	def wheelEvent(self, event: QWheelEvent) -> None:

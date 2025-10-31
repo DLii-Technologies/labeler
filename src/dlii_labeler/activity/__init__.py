@@ -1,29 +1,42 @@
-from dataclasses import dataclass
 import sys
-from typing import List, Optional
+from typing import Dict, List, Optional
 from PyQt6.QtCore import (
 	Qt,
-	QPoint,
-	QPointF,
 	pyqtSignal
 )
 from PyQt6.QtGui import (
-	QColor,
-	QPen,
+	QKeyEvent,
 	QPixmap
 )
 from PyQt6.QtWidgets import (
 	QGraphicsPixmapItem,
 	QGraphicsItem,
-	QGraphicsRectItem,
 	QGraphicsScene,
 	QGraphicsSceneMouseEvent
 )
+class KeyframeableGraphicsItem(QGraphicsItem):
+	def __init__(self, *args, **kwargs):
+		super().__init__(*args, **kwargs)
+
+
+class SerializableGraphicsItem(QGraphicsItem):
+	def __init__(self, *args, **kwargs):
+		super().__init__(*args, **kwargs)
+
+	@classmethod
+	def deserialize(cls, data: Dict) -> "SerializableGraphicsItem":
+		raise NotImplementedError
+
+	def serialize(self) -> Dict:
+		raise NotImplementedError
+
 
 class Activity(QGraphicsScene):
 
 	IDENTIFIER = "None"
 	DRAG_THRESHOLD = 5
+
+	changed = pyqtSignal()
 
 	def __init__(self, parent = None) -> None:
 		super().__init__(parent)
@@ -32,35 +45,58 @@ class Activity(QGraphicsScene):
 
 		self._current_selection: set[QGraphicsItem] = set()
 
-		self._select_box_item = QGraphicsRectItem()
-		self._select_box_item.setPen(QPen(QColor(128, 128, 128), 1))
-		self._select_box_item.setBrush(QColor(128, 128, 128, 128))
-		self._select_box_item.setOpacity(0.5)
-		self._select_box_item.setZValue(9999)
-		self._is_drag_selecting = False
-		self._is_object_dragging = False
-
 		from ..application import Application
 		self._app = Application.instance()
 		self._app.mediaManager().frameChanged.connect(self.setPixmap)
+		self._app.folderOpened.connect(self._load)
+		self.changed.connect(self._save)
+
+	def _load(self) -> None:
+		self.load(self._app.dataStore().get(self.IDENTIFIER))
+
+
+	def _save(self) -> None:
+		self._app.dataStore().set(self.IDENTIFIER, self.dump())
+
+
+	def load(self, data: Optional[Dict]) -> None:
+		if data is None:
+			return
+		for module, name, data in data.get("items", []):
+			item = getattr(sys.modules[module], name).deserialize(data)
+			self.addItem(item)
+
+
+	def dump(self) -> Dict:
+		return {
+			"items": [
+				(item.__module__, item.__class__.__name__, item.serialize())
+				for item in self.items() if isinstance(item, SerializableGraphicsItem)
+			]
+		}
+
 
 	def clearSelected(self) -> None:
 		for item in self.selectedItems():
 			item.setSelected(False)
 
+
 	def toggleSelected(self, itmes: List[QGraphicsItem]) -> None:
 		for item in itmes:
 			item.setSelected(not item.isSelected())
 
+
 	def deselect(self, items: List[QGraphicsItem]) -> None:
 		for item in items:
 			item.setSelected(False)
+
 
 	def select(self, items: List[QGraphicsItem], clear: bool = True) -> None:
 		if clear:
 			self.clearSelected()
 		for item in items:
 			item.setSelected(True)
+
 
 	def setPixmap(self, image: QPixmap) -> None:
 		self._frame.setPixmap(image)
@@ -79,3 +115,11 @@ class Activity(QGraphicsScene):
 
 	def mouseDoubleClickEvent(self, event: QGraphicsSceneMouseEvent) -> None:
 		self.mousePressEvent(event)
+
+	def keyPressEvent(self, event: QKeyEvent) -> None:
+		if event.key() == Qt.Key.Key_Delete:
+			for item in self.selectedItems():
+				self.removeItem(item)
+			event.accept()
+			return
+		super().keyPressEvent(event)

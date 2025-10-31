@@ -56,13 +56,19 @@ class MediaManager(QObject):
 		return len(self._image_paths)
 
 
-	def setFolder(self, folder_path: Union[Path, str]) -> Optional[List[str]]:
-		# Find all image files in folder
+	def scanFolder(self, folder_path: Union[Path, str]):
 		image_paths = []
 		for file in Path(folder_path).iterdir():
 			if file.suffix.lower() in self.SUPPORTED_IMAGE_FORMATS:
 				image_paths.append(file)
-		self._image_paths = sorted(image_paths)
+		return sorted(image_paths)
+
+
+	def setFolder(self, folder_path: Union[Path, str], image_paths: Optional[List[Path]] = None) -> Optional[List[str]]:
+		# Find all image files in folder
+		if image_paths is None:
+			image_paths = self.scanFolder(folder_path)
+		self._image_paths = image_paths
 		self.folderChanged.emit(folder_path)
 		self._current_index = -1
 		self.setIndex(0)
@@ -92,4 +98,6 @@ class MediaManager(QObject):
 
 	@lru_cache(maxsize=128)
 	def _loadImage(self, path: Path):
+		if not path.exists():
+			return QPixmap()
 		return QPixmap(str(path))

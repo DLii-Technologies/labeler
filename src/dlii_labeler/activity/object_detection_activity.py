@@ -114,7 +114,7 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 			return self.Sides.NONE
 
 		# Compute the effective handle point size. It should be at least MIN_HANDLE_SIZE, otherwise the HANDLE_SIZE
-		handle_size = max(self.HANDLE_SIZE / view.transform().m11(), self.MIN_HANDLE_MARGIN)
+		handle_size = self.HANDLE_SIZE / view.transform().m11()
 
 		handle = self.Sides.NONE
 		if pos.x() - left < handle_size:
@@ -152,7 +152,7 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 
 
 	def mousePressEvent(self, event: QGraphicsSceneMouseEvent):
-		self._press_rect = self.boundingRect()
+		self._press_rect = self.rect()
 		self._press_anchor = event.pos()
 		if (
 			event.button() == Qt.MouseButton.LeftButton
@@ -164,7 +164,6 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 			view: QGraphicsView = event.widget().parent() # type: ignore
 			handle = self._handleAt(view, event.pos())
 			if handle != self.Sides.NONE:
-				print(self._press_rect)
 				self._resizing = True
 				self._resizing_handle = handle
 				if not event.modifiers() & Qt.KeyboardModifier.ShiftModifier:

@@ -92,6 +92,10 @@ class MediaManager(QObject):
 		return self._current_index
 
 
+	def frame(self, index: int) -> QPixmap:
+		return self._loadImage(self._image_paths[index])
+
+
 	def imagePaths(self) -> List[Path]:
 		return self._image_paths
 

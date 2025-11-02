@@ -1,13 +1,18 @@
+from PyQt6.QtCore import (
+	Qt
+)
 from PyQt6.QtGui import (
 	QIcon
 )
 from PyQt6.QtWidgets import (
+	QDockWidget,
 	QLabel,
 	QMainWindow,
 	QMenuBar,
 	QStatusBar,
 )
 from .widget.pane import Pane
+from .widget.scrubber import Scrubber
 from .widget.viewport_widget import ViewportWidget
 
 class MainWindow(QMainWindow):
@@ -24,6 +29,11 @@ class MainWindow(QMainWindow):
 		self._viewport.setWidget(ViewportWidget())
 		self.setCentralWidget(self._viewport)
 
+		self._scrubber = Scrubber()
+		dock_widget = QDockWidget("Scrubber", self)
+		dock_widget.setWidget(self._scrubber)
+		self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, dock_widget)
+
 		self._status_bar = QStatusBar()
 		self.setStatusBar(self._status_bar)
 
@@ -32,6 +42,8 @@ class MainWindow(QMainWindow):
 
 		self._populateMenuBar()
 		self._populateStatusBar()
+
+		self._app.mediaManager().folderChanged.connect(self.updateTitle)
 
 
 	def _populateMenuBar(self):
@@ -59,9 +71,17 @@ class MainWindow(QMainWindow):
 		self._onFrameChanged(self._app.mediaManager().index())
 
 
-	def openFolder(self) -> bool:
-		return self._app.openFolder(parent=self)
-
-
 	def _onFrameChanged(self, index: int):
 		self._status_frames.setText(f"Frame: {index + 1} / {self._app.mediaManager().length()}")
+
+
+	def updateTitle(self):
+		path = self._app.mediaManager().folder()
+		title = f"{self._app.applicationName()} v{self._app.applicationVersion()}"
+		if path is not None:
+			title += f" - {path}"
+		self.setWindowTitle(title)
+
+
+	def openFolder(self) -> bool:
+		return self._app.openFolder(parent=self)

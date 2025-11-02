@@ -83,10 +83,11 @@ class Application(QApplication):
 	def setPixmap(self, image: QPixmap):
 		self.imageChanged.emit(image)
 
-	def openFolder(self, folder_path: Optional[Union[Path, str]] = None, parent: Optional[QWidget] = None) -> False:
+	def openFolder(self, folder_path: Optional[Union[Path, str]] = None, parent: Optional[QWidget] = None) -> bool:
 		if not folder_path is not None:
 			# Open a file dialog to select a folder of images
-			folder_path = QFileDialog.getExistingDirectory(parent, "Open Folder")
+			current_directory = str(self._media_manager.folder() or "") or None
+			folder_path = QFileDialog.getExistingDirectory(parent, "Open Folder", directory=current_directory)
 			if not folder_path:
 				return False
 		self._folder_path = Path(folder_path)

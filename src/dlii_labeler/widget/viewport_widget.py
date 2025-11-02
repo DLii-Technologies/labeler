@@ -36,6 +36,11 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 
 	activityChanged = pyqtSignal(Activity)
 
+	SCANCODES = {
+		'A': {'windows': 30, 'linux': 38, 'macos': 0},
+		'D': {'windows': 32, 'linux': 39, 'macos': 0}
+	}
+
 	def __init__(self, parent: Optional[QWidget] = None) -> None:
 		super().__init__(parent)
 
@@ -203,11 +208,12 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		media_manager = self._app.mediaManager()
 		frame_index = media_manager.currentFrameIndex()
 		frame_count = media_manager.length()
-		if event.key() == Qt.Key.Key_Left and frame_index > 0:
+		if (event.key() == Qt.Key.Key_Left or event.key() == Qt.Key.Key_A) and frame_index > 0:
 			media_manager.setIndex(frame_index - 1)
 			event.accept()
 			return
-		if event.key() == Qt.Key.Key_Right and frame_index < frame_count - 1:
+		# Harcode Dvorak alternative to D for right for now
+		if (event.key() == Qt.Key.Key_Right or event.key() in (Qt.Key.Key_D, Qt.Key.Key_E)) and frame_index < frame_count - 1:
 			media_manager.setIndex(frame_index + 1)
 			event.accept()
 			return

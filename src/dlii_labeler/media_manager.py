@@ -40,6 +40,7 @@ class MediaManager(QObject):
 	def __init__(self):
 		super().__init__()
 		self._current_frame = QPixmap()
+		self._folder_path: Optional[Path] = None
 		self._image_paths: List[Path] = []
 		self._current_index = 0
 
@@ -64,10 +65,15 @@ class MediaManager(QObject):
 		return sorted(image_paths)
 
 
+	def folder(self) -> Optional[Path]:
+		return self._folder_path
+
+
 	def setFolder(self, folder_path: Union[Path, str], image_paths: Optional[List[Path]] = None) -> Optional[List[str]]:
 		# Find all image files in folder
 		if image_paths is None:
 			image_paths = self.scanFolder(folder_path)
+		self._folder_path = Path(folder_path)
 		self._image_paths = image_paths
 		self.folderChanged.emit(folder_path)
 		self._current_index = -1

@@ -173,7 +173,8 @@ class KeyframeableGraphicsItem(SaveableGraphicsItem, Generic[T]):
 
 	def insertKeyframe(self) -> None:
 		index = self.currentFrameIndex()
-		self._keyframes[index] = Keyframe(index, self.currentState())
+		state = self.currentState()
+		self._keyframes[index] = Keyframe(index, state)
 
 
 	def removeKeyframe(self, frame_index: Optional[int] = None) -> bool:
@@ -272,7 +273,14 @@ class Activity(QGraphicsScene):
 		self._app.dataStore().set(self.IDENTIFIER, self.dump())
 
 
+	def clear(self) -> None:
+		for item in self.items():
+			if item != self._frame:
+				self.removeItem(item)
+
+
 	def load(self, data: Optional[Dict]) -> None:
+		self.clear()
 		if data is None:
 			return
 		for module, name, data in data.get("items", []):

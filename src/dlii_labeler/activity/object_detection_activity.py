@@ -152,8 +152,8 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 
 
 	def mousePressEvent(self, event: QGraphicsSceneMouseEvent):
-		self._press_rect = self.rect()
-		self._press_anchor = event.pos()
+		self._press_rect = QRectF(self.pos(), self.rect().size())
+		self._press_anchor = event.scenePos()
 		if (
 			event.button() == Qt.MouseButton.LeftButton
 			and event.modifiers() in (
@@ -176,7 +176,7 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 
 	def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent):
 		if self._resizing: # type: ignore
-			delta = event.pos() - self._press_anchor
+			delta = event.scenePos() - self._press_anchor
 			rect = QRectF(self._press_rect)
 
 			if self._resizing_handle & self.Sides.W:
@@ -193,7 +193,8 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 				rect.setBottom(max(new_bottom, self._press_rect.top() + self.MIN_SIZE))
 
 			self.prepareGeometryChange()
-			self.setRect(rect)
+			self.setPos(rect.topLeft())
+			self.setRect(QRectF(0, 0, rect.width(), rect.height()))
 			event.accept()
 			return
 		super().mouseMoveEvent(event)

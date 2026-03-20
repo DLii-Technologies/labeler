@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import math
 from typing import Dict
 from PyQt6.QtCore import (
 	QRectF,
@@ -27,6 +28,7 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 	MIN_HANDLE_MARGIN = 6
 	HANDLE_SIZE = 6
 	MIN_SIZE = 1.0
+	SHADOW_WIDTH = 16
 
 	@dataclass
 	class State:
@@ -105,6 +107,11 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 		self.prepareGeometryChange()
 		self.setUvPos(data.u, data.v)
 		self.setRect(QRectF(0, 0, self.fromU(data.width), self.fromV(data.height)))
+
+
+	def boundingRect(self) -> QRectF:
+		offset = int(math.ceil(self.SHADOW_WIDTH/2))
+		return super().boundingRect().adjusted(-offset, -offset, offset, offset)
 
 
 	def _handleAt(self, view: QGraphicsView, pos: QPointF):
@@ -212,6 +219,15 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 
 
 	def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget=None):
+		# draw black outline
+		outline_pen = QPen()
+		outline_pen.setCosmetic(True)
+		for width in range(self.SHADOW_WIDTH, 0, -2):
+			alpha = int(200 * (1.0 - (width / self.SHADOW_WIDTH)))
+			outline_pen.setColor(QColor(0, 0, 0, alpha))
+			outline_pen.setWidth(width)
+			painter.setPen(outline_pen)
+			painter.drawRect(self.rect())
 		pen = QPen()
 		pen.setWidth(2)
 		brush = None

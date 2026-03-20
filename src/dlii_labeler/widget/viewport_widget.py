@@ -2,6 +2,7 @@ from typing import Optional
 from PyQt6.QtCore import (
 	pyqtSignal,
 	QElapsedTimer,
+	QEvent,
 	QPoint,
 	QPointF,
 	QRectF,
@@ -232,6 +233,20 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		self.setZoom(self._zoom_target * step, anchor_uv=self.mapToUv(event.position().toPoint()), instant=False)
 
 	# Event Handling -------------------------------------------------------------------------------
+
+	def event(self, event):
+		if event.type() == QEvent.Type.NativeGesture:
+			if event.gestureType() == Qt.NativeGestureType.ZoomNativeGesture:
+				delta = event.value()
+				# position = event.position().toPoint()
+				# the above doesn't work, so use this for now...
+				position = self.mapFromGlobal(QCursor.pos())
+				step = 2.000 ** delta
+				self.setZoom(self._zoom_target * step, anchor_uv=self.mapToUv(position), instant=False)
+				event.accept()
+				return True
+
+		return super().event(event)
 
 	def resizeEvent(self, event: QResizeEvent) -> None:
 		super().resizeEvent(event)

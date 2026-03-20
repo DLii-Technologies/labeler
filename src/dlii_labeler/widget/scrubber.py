@@ -8,6 +8,7 @@ from PyQt6.QtGui import (
 	QColor,
 	QMouseEvent,
 	QPainter,
+	QPaintEvent,
 	QWheelEvent
 )
 from PyQt6.QtWidgets import (

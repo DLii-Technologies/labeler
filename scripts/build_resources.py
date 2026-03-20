@@ -22,6 +22,7 @@ with open("./resources/gen/manifest.json", "w") as f:
 subprocess.run(["rcc", "-g", "python", "resources/resources.qrc", "-o", OUTPUT_PATH])
 
 # Need to replace pyside imports with PyQt
+OUTPUT_PATH.parent.mkdir(exist_ok=True, parents=True)
 with open(OUTPUT_PATH, "r") as f:
     lines = f.readlines()
 with open(OUTPUT_PATH, "w") as f:

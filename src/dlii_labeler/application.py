@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
 	QWidget
 )
 
-from . import gen
+from .gen import resources_rc
 from .activity import Activity
 from .activity.object_detection_activity import ObjectDetectionActivity
 from .data_store import DataStore

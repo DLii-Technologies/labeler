@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, fields, is_dataclass
 from sortedcontainers import SortedDict
 import sys
@@ -322,7 +324,7 @@ class Activity(QGraphicsScene):
 
 
 	def keyPressEvent(self, event: QKeyEvent) -> None:
-		if event.key() == Qt.Key.Key_Delete:
+		if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
 			self.deleteSelected()
 			event.accept()
 			return

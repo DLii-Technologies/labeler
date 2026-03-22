@@ -3,7 +3,7 @@ import subprocess
 from pathlib import Path
 import tomllib
 
-OUTPUT_PATH = "./src/dlii_labeler/gen/resources_rc.py"
+OUTPUT_PATH = Path("./src/dlii_labeler/gen/resources_rc.py")
 
 toml = tomllib.load(open("pyproject.toml", "rb"))
 

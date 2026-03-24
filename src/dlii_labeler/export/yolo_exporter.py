@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
-from PyQt6.QtCore import QRectF
+from PyQt6.QtCore import QPointF, QRectF
 from PyQt6.QtWidgets import (
 	QDialog,
 	QCheckBox,
@@ -24,6 +24,7 @@ class YoloExporter(Exporter):
 	@dataclass
 	class Options:
 		object_detection: bool = True
+		object_segmentation: bool = False
 		include_empty_frames: bool = False
 
 	def _export_object_detection(self, path: Path, options: Options) -> None:
@@ -44,10 +45,31 @@ class YoloExporter(Exporter):
 			with open(path / f"{image_path.stem}.txt", "w") as f:
 				f.write("\n".join(lines))
 
+	def _export_object_segmentation(self, path: Path, options: Options) -> None:
+		from ..activity.object_segmentation_activity import ObjectSegmentationActivity, PathItem
+		activity = self.app()._activities[ObjectSegmentationActivity.IDENTIFIER]
+		for frame_index, image_path in enumerate(self.app().mediaManager().imagePaths()):
+			lines = []
+			for item in activity.items():
+				if not isinstance(item, PathItem):
+					continue
+				if not item.isAlive(frame_index):
+					continue
+				state = item.stateForFrame(frame_index)
+				points = [QPointF(state.u + x, state.v + y) for x, y in state.points]
+				line = f"0 {' '.join(f'{p.x()} {p.y()}' for p in points)}"
+				lines.append(line)
+			if not lines and not options.include_empty_frames:
+				continue
+			with open(path / f"{image_path.stem}.txt", "w") as f:
+				f.write("\n".join(lines))
+
 
 	def export(self, path: Path, options: Options) -> None:
 		if options.object_detection:
 			self._export_object_detection(path, options)
+		if options.object_segmentation:
+			self._export_object_segmentation(path, options)
 
 	def show(self, parent: Optional[QWidget] = None) -> None:
 		# Show a modal dialog with options
@@ -78,6 +100,10 @@ class YoloExporter(Exporter):
 		object_detection_checkbox.setChecked(True)
 		layout.addWidget(object_detection_checkbox)
 
+		object_segmentation_checkbox = QCheckBox("Object Segmentation")
+		object_segmentation_checkbox.setChecked(False)
+		layout.addWidget(object_segmentation_checkbox)
+
 		# Add option checkboxes
 		include_empty_checkbox = QCheckBox("Include empty frames")
 		include_empty_checkbox.setChecked(False)
@@ -97,4 +123,10 @@ class YoloExporter(Exporter):
 		if dialog.exec() != QDialog.DialogCode.Accepted:
 			return
 
-		self.export(Path(self._folder_path_edit.text()), self.Options(object_detection_checkbox.isChecked()))
+		options = self.Options(
+			object_detection_checkbox.isChecked(),
+			object_segmentation_checkbox.isChecked(),
+			include_empty_checkbox.isChecked()
+		)
+
+		self.export(Path(self._folder_path_edit.text()), options)

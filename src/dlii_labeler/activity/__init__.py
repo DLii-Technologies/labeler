@@ -268,11 +268,17 @@ class Activity(QGraphicsScene):
 		self.changed.connect(self._save)
 
 	def _load(self) -> None:
-		self.load(self._app.dataStore().get(self.IDENTIFIER))
+		data_store = self._app.dataStore()
+		if data_store is None:
+			return
+		self.load(data_store.get(self.IDENTIFIER))
 
 
 	def _save(self) -> None:
-		self._app.dataStore().set(self.IDENTIFIER, self.dump())
+		data_store = self._app.dataStore()
+		if data_store is None:
+			return
+		data_store.set(self.IDENTIFIER, self.dump())
 
 
 	def clear(self) -> None:

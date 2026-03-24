@@ -287,7 +287,6 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 class ObjectDetectionActivity(Activity):
 
 	IDENTIFIER = "Object Detection"
-	...
 
 	def __init__(self, parent = None) -> None:
 		super().__init__(parent)

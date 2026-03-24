@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
 from .gen import resources_rc
 from .activity import Activity
 from .activity.object_detection_activity import ObjectDetectionActivity
+from .activity.object_segmentation_activity import ObjectSegmentationActivity
 from .data_store import DataStore
 from .export.yolo_exporter import YoloExporter
 from .media_manager import MediaManager
@@ -35,6 +36,8 @@ class Application(QApplication):
 	def __init__(self, argv):
 		super().__init__(argv)
 
+		self._data_store: Optional[DataStore] = None
+
 		manifest = QFile(":/manifest.json")
 		manifest.open(QFile.OpenModeFlag.ReadOnly | QFile.OpenModeFlag.Text)
 		manifest_data = manifest.readAll().data().decode("utf-8")
@@ -50,7 +53,8 @@ class Application(QApplication):
 
 		self._activities = {
 			Activity.IDENTIFIER: Activity(),
-			ObjectDetectionActivity.IDENTIFIER: ObjectDetectionActivity()
+			ObjectDetectionActivity.IDENTIFIER: ObjectDetectionActivity(),
+			ObjectSegmentationActivity.IDENTIFIER: ObjectSegmentationActivity()
 		}
 		for activity in self._activities.values():
 			self.imageChanged.connect(activity.setPixmap)
@@ -71,7 +75,7 @@ class Application(QApplication):
 	def activities(self) -> Dict[str, Activity]:
 		return self._activities
 
-	def dataStore(self) -> DataStore:
+	def dataStore(self) -> Optional[DataStore]:
 		return self._data_store
 
 	def mediaManager(self) -> MediaManager:
@@ -94,7 +98,7 @@ class Application(QApplication):
 		self._media_manager.setFolder(folder_path)
 		self._data_store = DataStore(folder_path)
 		self.folderOpened.emit(folder_path)
-		if not self.dataStore().checkVersion():
+		if not self._data_store.checkVersion():
 			# Alert the user the data may be incompatible. Ask to continue
 			if QMessageBox.warning(
 				parent,

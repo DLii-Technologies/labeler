@@ -11,9 +11,7 @@ requires-python = ">=3.11"
 dependencies = [
   "opencv-python",
   "PyQt6>=6.10.0",
-  "sortedcontainers",
-  "torch>=2.5.1",
-  "ultralytics",
+  "sortedcontainers"
 ]
 
 [manifest]

@@ -13,8 +13,10 @@ from PyQt6.QtCore import (
 from PyQt6.QtGui import (
 	QAction,
 	QCursor,
+	QInputDevice,
 	QKeyEvent,
 	QMouseEvent,
+	QNativeGestureEvent,
 	QResizeEvent,
 	QTransform,
 	QWheelEvent
@@ -74,6 +76,9 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		self._pan_uv_target = QPointF(0.5, 0.5) # The target to approach for animated navigation
 		self._pan_uv_anchor: Optional[QPointF] = None
 		self._is_panning = False
+
+		self._gesture_zoom_active = False
+		self._gesture_last_pos: QPointF | None = None
 
 		# Navigation Animation Timers
 		self._navigation_step_timer = QTimer(self)
@@ -173,16 +178,7 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 	# Input Handling -------------------------------------------------------------------------------
 
 	def mousePressEvent(self, event: QMouseEvent) -> None:
-		# print(
-		# 	"Scene position:\n",
-		# 	"\tU/V:", self.mapToUv(event.position().toPoint()), "\n",
-		# 	"\tScene:", self.mapToScene(event.position().toPoint()), "\n",
-		# 	"\tViewport:", event.position().toPoint()
-		# )
-		if event.button() == Qt.MouseButton.MiddleButton or (
-			event.button() == Qt.MouseButton.LeftButton and
-			event.modifiers() & Qt.KeyboardModifier.AltModifier
-		):
+		if event.button() == Qt.MouseButton.MiddleButton:
 			self._pan_uv_anchor = self.mapToUv(event.position().toPoint())
 			self._is_panning = True
 			event.accept()
@@ -191,6 +187,7 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 
 
 	def mouseMoveEvent(self, event: QMouseEvent) -> None:
+		event.accept()
 		if self._is_panning:
 			assert self._pan_uv_anchor is not None
 			delta = self._pan_uv_anchor - self.mapToUv(event.position().toPoint())
@@ -228,21 +225,85 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 			super().keyPressEvent(event)
 
 
-	def wheelEvent(self, event: QWheelEvent) -> None:
-		step = 1.0010 ** event.angleDelta().y()
-		self.setZoom(self._zoom_target * step, anchor_uv=self.mapToUv(event.position().toPoint()), instant=False)
+	def _uvDeltaFromViewportDelta(self, delta_px: QPointF) -> QPointF:
+		# Convert a viewport-pixel translation into a UV translation.
+		p0 = QPointF(self.rect().center())
+		p1 = p0 + delta_px
+		return self.mapToUv(p1.toPoint()) - self.mapToUv(p0.toPoint())
 
+
+	def wheelEvent(self, event: QWheelEvent) -> None:
+		# During an active pinch stream, ignore wheel-based scrolling so the
+		# pinch handler owns the interaction.
+		if self._gesture_zoom_active:
+			event.accept()
+			return
+
+		pixel_delta = event.pixelDelta()
+
+		# Trackpad two-finger scroll -> pan
+		if (
+			not pixel_delta.isNull()
+			and event.device() is not None
+			and event.device().type() == QInputDevice.DeviceType.TouchPad
+		):
+			uv_delta = self._uvDeltaFromViewportDelta(QPointF(pixel_delta))
+			self.setPan(self.pan() - uv_delta, instant=True)
+			event.accept()
+			return
+
+		# Mouse wheel -> zoom
+		angle_y = event.angleDelta().y()
+		if angle_y != 0:
+			step = 1.0010 ** angle_y
+			self.setZoom(
+				self._zoom_target * step,
+				anchor_uv=self.mapToUv(event.position().toPoint()),
+				instant=False,
+			)
+			event.accept()
+			return
+
+		event.ignore()
+		super().wheelEvent(event)
 	# Event Handling -------------------------------------------------------------------------------
 
 	def event(self, event):
 		if event.type() == QEvent.Type.NativeGesture:
-			if event.gestureType() == Qt.NativeGestureType.ZoomNativeGesture:
-				delta = event.value()
-				# position = event.position().toPoint()
-				# the above doesn't work, so use this for now...
-				position = self.mapFromGlobal(QCursor.pos())
-				step = 2.000 ** delta
-				self.setZoom(self._zoom_target * step, anchor_uv=self.mapToUv(position), instant=False)
+			gesture: QNativeGestureEvent = event
+
+			if gesture.gestureType() == Qt.NativeGestureType.BeginNativeGesture:
+				self._gesture_zoom_active = False
+				self._gesture_last_pos = gesture.position()
+				event.accept()
+				return True
+
+			if gesture.gestureType() == Qt.NativeGestureType.EndNativeGesture:
+				self._gesture_zoom_active = False
+				self._gesture_last_pos = None
+				event.accept()
+				return True
+
+			if gesture.gestureType() == Qt.NativeGestureType.ZoomNativeGesture:
+				pos = gesture.position()
+
+				# During a pinch, treat movement of the gesture anchor as pan.
+				if self._gesture_last_pos is not None:
+					delta_px = pos - self._gesture_last_pos
+					if not delta_px.isNull():
+						uv_delta = self._uvDeltaFromViewportDelta(delta_px)
+						self.setPan(self.pan() - uv_delta, instant=True)
+
+				self._gesture_last_pos = pos
+				self._gesture_zoom_active = True
+
+				# event.value() is the zoom delta for ZoomNativeGesture.
+				step = 2.0 ** gesture.value()
+				self.setZoom(
+					self._zoom_target * step,
+					anchor_uv=self.mapToUv(pos.toPoint()),
+					instant=False,
+				)
 				event.accept()
 				return True
 

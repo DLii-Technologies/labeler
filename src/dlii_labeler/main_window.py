@@ -57,7 +57,8 @@ class MainWindow(QMainWindow):
 		file_menu.addSeparator()
 
 		export_menu = file_menu.addMenu("&Export")
-		export_menu.addAction("YOLO", self._app._exporters["YOLO"].show)
+		for exporter_name, exporter in self._app._exporters.items():
+			export_menu.addAction(exporter_name, exporter.show)
 		file_menu.addSeparator()
 		file_menu.addAction("Exit", self.close)
 

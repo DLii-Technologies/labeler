@@ -21,6 +21,7 @@ from .activity import Activity
 from .activity.object_detection_activity import ObjectDetectionActivity
 from .activity.object_segmentation_activity import ObjectSegmentationActivity
 from .data_store import DataStore
+from .export.tngo_exporter import TngoExporter
 from .export.yolo_exporter import YoloExporter
 from .media_manager import MediaManager
 
@@ -60,6 +61,7 @@ class Application(QApplication):
 			self.imageChanged.connect(activity.setPixmap)
 
 		self._exporters = {
+		    TngoExporter.IDENTIFIER: TngoExporter(),
 			YoloExporter.IDENTIFIER: YoloExporter()
 		}
 

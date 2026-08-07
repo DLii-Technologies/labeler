@@ -1,4 +1,7 @@
 from PyQt6.QtCore import (
+	QByteArray,
+	QEvent,
+	QRect,
 	Qt
 )
 from PyQt6.QtGui import (
@@ -12,27 +15,40 @@ from PyQt6.QtWidgets import (
 	QStatusBar,
 )
 from .widget.pane import Pane
+from .widget.object_properties_widget import ObjectPropertiesWidget
 from .widget.scrubber import Scrubber
 from .widget.viewport_widget import ViewportWidget
 
 class MainWindow(QMainWindow):
+	WINDOW_DATA_KEY = "main_window_state"
+
 	def __init__(self):
 		super().__init__()
+		self._restoring_window_state = True
 
 		from .application import Application
 		self._app = Application.instance()
+		self._app.folderOpened.connect(self._restoreWindowState)
 		self.setWindowTitle(f"{self._app.applicationName()} v{self._app.applicationVersion()}")
 		self.setWindowIcon(QIcon(":/images/icon.png"))
 		self.resize(1000, 700)
 
 		self._viewport = Pane()
-		self._viewport.setWidget(ViewportWidget())
+		self._viewport_widget = ViewportWidget()
+		self._viewport.setWidget(self._viewport_widget)
 		self.setCentralWidget(self._viewport)
 
 		self._scrubber = Scrubber()
-		dock_widget = QDockWidget("Scrubber", self)
-		dock_widget.setWidget(self._scrubber)
-		self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, dock_widget)
+		self._scrubber_dock = QDockWidget("Scrubber", self)
+		self._scrubber_dock.setObjectName("scrubber_dock")
+		self._scrubber_dock.setWidget(self._scrubber)
+		self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self._scrubber_dock)
+
+
+		for dock in (self._scrubber_dock,):
+			dock.dockLocationChanged.connect(self._saveWindowState)
+			dock.topLevelChanged.connect(self._saveWindowState)
+			dock.visibilityChanged.connect(self._saveWindowState)
 
 		self._status_bar = QStatusBar()
 		self.setStatusBar(self._status_bar)
@@ -42,8 +58,138 @@ class MainWindow(QMainWindow):
 
 		self._populateMenuBar()
 		self._populateStatusBar()
+		self._restoreWindowState()
 
 		self._app.mediaManager().folderChanged.connect(self.updateTitle)
+
+
+	def _restoreWindowState(self, *_args) -> None:
+		self._restoring_window_state = True
+		try:
+			data_store = self._app.dataStore()
+			window_data = data_store.get(self.WINDOW_DATA_KEY) if data_store is not None else None
+			self.setWindowState(Qt.WindowState.WindowNoState)
+			if isinstance(window_data, dict):
+				geometry = window_data.get("geometry")
+				if isinstance(geometry, dict):
+					self._restoreNormalizedGeometry(geometry)
+				elif isinstance(geometry, (bytes, bytearray)):
+					# Migrate projects that still contain the old absolute geometry format.
+					self.restoreGeometry(QByteArray(bytes(geometry)))
+					if not self.isMaximized() and not self.isFullScreen():
+						self._constrainGeometryToScreen()
+
+				state = window_data.get("state")
+				if isinstance(state, (bytes, bytearray)):
+					self.restoreState(QByteArray(bytes(state)))
+
+				if window_data.get("fullscreen", False):
+					self.setWindowState(Qt.WindowState.WindowFullScreen)
+				elif window_data.get("maximized", False):
+					self.setWindowState(Qt.WindowState.WindowMaximized)
+		finally:
+			self._restoring_window_state = False
+			self._saveWindowState()
+
+
+	def _screenGeometry(self) -> QRect:
+		screen = self.screen() or self._app.primaryScreen()
+		return screen.availableGeometry() if screen is not None else QRect()
+
+
+	def _restoreNormalizedGeometry(self, geometry_data: dict) -> bool:
+		screen_geometry = self._screenGeometry()
+		values = tuple(geometry_data.get(key) for key in ("x", "y", "width", "height"))
+		if not screen_geometry.isValid() or not all(
+			isinstance(value, (int, float)) for value in values
+		):
+			return False
+
+		x_ratio, y_ratio, width_ratio, height_ratio = values
+		width = min(screen_geometry.width(), max(1, round(width_ratio * screen_geometry.width())))
+		height = min(screen_geometry.height(), max(1, round(height_ratio * screen_geometry.height())))
+		x = round(screen_geometry.x() + x_ratio * screen_geometry.width())
+		y = round(screen_geometry.y() + y_ratio * screen_geometry.height())
+
+		max_x = screen_geometry.x() + screen_geometry.width() - width
+		max_y = screen_geometry.y() + screen_geometry.height() - height
+		x = min(max(screen_geometry.x(), x), max_x)
+		y = min(max(screen_geometry.y(), y), max_y)
+		self.setGeometry(QRect(x, y, width, height))
+		return True
+
+
+	def _constrainGeometryToScreen(self) -> None:
+		screen_geometry = self._screenGeometry()
+		if not screen_geometry.isValid():
+			return
+		geometry = self.geometry()
+		width = min(screen_geometry.width(), max(1, geometry.width()))
+		height = min(screen_geometry.height(), max(1, geometry.height()))
+		x = min(
+			max(screen_geometry.x(), geometry.x()),
+			screen_geometry.x() + screen_geometry.width() - width,
+		)
+		y = min(
+			max(screen_geometry.y(), geometry.y()),
+			screen_geometry.y() + screen_geometry.height() - height,
+		)
+		self.setGeometry(QRect(x, y, width, height))
+
+
+	def _normalizedGeometry(self) -> dict | None:
+		screen_geometry = self._screenGeometry()
+		if not screen_geometry.isValid():
+			return None
+
+		geometry = self.normalGeometry() if self.isMaximized() or self.isFullScreen() else self.geometry()
+		if geometry.isNull():
+			geometry = self.geometry()
+		return {
+			"x": (geometry.x() - screen_geometry.x()) / screen_geometry.width(),
+			"y": (geometry.y() - screen_geometry.y()) / screen_geometry.height(),
+			"width": geometry.width() / screen_geometry.width(),
+			"height": geometry.height() / screen_geometry.height(),
+		}
+
+
+	def _saveWindowState(self, *_args) -> None:
+		if getattr(self, "_restoring_window_state", True):
+			return
+		app = getattr(self, "_app", None)
+		data_store = app.dataStore() if app is not None else None
+		if data_store is None:
+			return
+		normalized_geometry = self._normalizedGeometry()
+		if normalized_geometry is None:
+			return
+		data_store.set(self.WINDOW_DATA_KEY, {
+			"geometry": normalized_geometry,
+			"state": bytes(self.saveState()),
+			"maximized": self.isMaximized(),
+			"fullscreen": self.isFullScreen(),
+		})
+
+
+	def resizeEvent(self, event) -> None:
+		super().resizeEvent(event)
+		self._saveWindowState()
+
+
+	def moveEvent(self, event) -> None:
+		super().moveEvent(event)
+		self._saveWindowState()
+
+
+	def changeEvent(self, event) -> None:
+		super().changeEvent(event)
+		if event.type() == QEvent.Type.WindowStateChange:
+			self._saveWindowState()
+
+
+	def closeEvent(self, event) -> None:
+		self._saveWindowState()
+		super().closeEvent(event)
 
 
 	def _populateMenuBar(self):

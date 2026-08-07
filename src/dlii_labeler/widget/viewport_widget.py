@@ -36,6 +36,8 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 
 	ZOOM_ANIMATION_HALF_LIFE_MS = 45
 	PAN_ANIMATION_HALF_LIFE_MS = 1000
+	ACTIVITY_DATA_KEY = "viewport_activity"
+	NAVIGATION_DATA_KEY = "viewport_navigation"
 
 	activityChanged = pyqtSignal(Activity)
 
@@ -104,8 +106,10 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		# Signals and Slots
 		self._app.mediaManager().frameChanged.connect(self._resetBaseTransform)
 
-		# Set the default activity
-		self.setActivity(self._app.activities()["Object Detection"])
+		self._app.folderOpened.connect(self._restoreActivity)
+		self._app.folderOpened.connect(self._restoreNavigationState)
+		self._restoreActivity()
+		self._restoreNavigationState()
 
 	def setupToolBar(self, toolbar: QToolBar) -> None:
 		super().setupToolBar(toolbar)
@@ -134,7 +138,22 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		Set the current activity
 		"""
 		self.setScene(activity)
+		data_store = self._app.dataStore()
+		if data_store is not None:
+			data_store.set(self.ACTIVITY_DATA_KEY, activity.IDENTIFIER)
 		self.activityChanged.emit(activity)
+
+
+	def _restoreActivity(self, *_args) -> None:
+		default_activity = self._app.activities()["Object Detection"]
+		activity_identifier = None
+		data_store = self._app.dataStore()
+		if data_store is not None:
+			activity_identifier = data_store.get(self.ACTIVITY_DATA_KEY)
+		if not isinstance(activity_identifier, str):
+			activity_identifier = default_activity.IDENTIFIER
+		activity = self._app.activities().get(activity_identifier, default_activity)
+		self.setActivity(activity)
 
 
 	def pan(self) -> QPointF:
@@ -149,6 +168,7 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		Set the current pan position
 		"""
 		self._setPan(pan, instant, _apply=True)
+		self._saveNavigationState()
 
 	def isZooming(self) -> bool:
 		"""
@@ -174,6 +194,41 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		Set the current zoom level
 		"""
 		self._setZoom(zoom, anchor_uv, instant, _apply=True)
+		self._saveNavigationState()
+
+
+	def _saveNavigationState(self) -> None:
+		data_store = self._app.dataStore()
+		if data_store is None:
+			return
+		data_store.set(self.NAVIGATION_DATA_KEY, {
+			"zoom": self._zoom_target,
+			"pan": (self._pan_uv_target.x(), self._pan_uv_target.y()),
+		})
+
+
+	def _restoreNavigationState(self, *_args) -> None:
+		zoom = 1.0
+		pan = QPointF(0.5, 0.5)
+		data_store = self._app.dataStore()
+		navigation_data = data_store.get(self.NAVIGATION_DATA_KEY) if data_store is not None else None
+		if isinstance(navigation_data, dict):
+			stored_zoom = navigation_data.get("zoom")
+			stored_pan = navigation_data.get("pan")
+			if isinstance(stored_zoom, (int, float)):
+				zoom = max(0.01, float(stored_zoom))
+			if (
+				isinstance(stored_pan, (tuple, list))
+				and len(stored_pan) == 2
+				and all(isinstance(value, (int, float)) for value in stored_pan)
+			):
+				pan = QPointF(float(stored_pan[0]), float(stored_pan[1]))
+
+		self._navigation_step_timer.stop()
+		self._setZoom(zoom, instant=True, _apply=False)
+		self._setPan(pan, instant=True, _apply=False)
+		self._applyViewTransform()
+		self._saveNavigationState()
 
 	# Input Handling -------------------------------------------------------------------------------
 

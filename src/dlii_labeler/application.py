@@ -51,6 +51,7 @@ class Application(QApplication):
 		self.setOrganizationDomain(manifest["organization_domain"])
 
 		self._media_manager = MediaManager()
+		self._media_manager.frameIndexChanged.connect(self._saveCurrentFrame)
 
 		self._activities = {
 			Activity.IDENTIFIER: Activity(),
@@ -89,6 +90,12 @@ class Application(QApplication):
 	def setPixmap(self, image: QPixmap):
 		self.imageChanged.emit(image)
 
+	def _saveCurrentFrame(self, frame_index: int) -> None:
+		data_store = self._data_store
+		if data_store is None:
+			return
+		data_store.set("last_frame", frame_index)
+
 	def openFolder(self, folder_path: Optional[Union[Path, str]] = None, parent: Optional[QWidget] = None) -> bool:
 		if not folder_path is not None:
 			# Open a file dialog to select a folder of images
@@ -97,8 +104,14 @@ class Application(QApplication):
 			if not folder_path:
 				return False
 		self._folder_path = Path(folder_path)
-		self._media_manager.setFolder(folder_path)
+		if self._data_store is not None:
+			self._data_store.close()
 		self._data_store = DataStore(folder_path)
+		last_frame = self._data_store.get("last_frame")
+		self._media_manager.setFolder(folder_path)
+		if isinstance(last_frame, int) and self._media_manager.length() > 0:
+			last_frame = min(max(last_frame, 0), self._media_manager.length() - 1)
+			self._media_manager.setIndex(last_frame)
 		self.folderOpened.emit(folder_path)
 		if not self._data_store.checkVersion():
 			# Alert the user the data may be incompatible. Ask to continue

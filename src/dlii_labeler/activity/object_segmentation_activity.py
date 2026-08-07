@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 import math
 import numpy as np
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
 from PyQt6.QtCore import (
 	QPointF,
@@ -47,9 +47,16 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 		point_ids: list[int]
 		closed: bool
 
-	def __init__(self, points: List[QPointF] | None = None, label: str = "", parent=None):
+	def __init__(
+		self,
+		points: List[QPointF] | None = None,
+		label_id: Optional[str] = None,
+		metadata: Optional[Dict[str, Any]] = None,
+		parent=None,
+	):
 		super().__init__(parent)
-		self.label = label
+		self.label_id = label_id
+		self.metadata: Dict[str, Any] = dict(metadata or {})
 		self.closed = True
 		self.points: List[QPointF] = [QPointF(p) for p in (points or [])]
 		self.point_ids: list[int] = list(range(len(self.points)))
@@ -66,6 +73,7 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 		self._dragging_point_index: int | None = None
 		self._press_points: List[QPointF] = []
 		self._press_scene_pos = QPointF()
+		self._press_item_pos = QPointF()
 
 		self._rebuildPath()
 
@@ -143,7 +151,14 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 	def load(self, data: Dict):
 		super().load(data)
 		self.setPos(self.fromU(data["u"]), self.fromV(data["v"]))
-		self.label = data.get("label", "")
+		self.label_id = data.get("label_id")
+		if not isinstance(self.label_id, str):
+			legacy_name = data.get("label", "")
+			label_set = self.app().labelSet()
+			label = label_set.label_named(legacy_name) if label_set is not None and isinstance(legacy_name, str) else None
+			self.label_id = label.id if label is not None else None
+		raw_metadata = data.get("metadata", {})
+		self.metadata = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
 		self.points = [
 			QPointF(self.fromU(x), self.fromV(y))
 			for x, y in data["points"]
@@ -156,7 +171,8 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 			"u": self.u(),
 			"v": self.v(),
 			"points": [(self.toU(p.x()), self.toV(p.y())) for p in self.points],
-			"label": self.label,
+			"label_id": self.label_id,
+			"metadata": dict(self.metadata),
 		}
 
 	def currentState(self) -> State:
@@ -432,6 +448,7 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 	def mousePressEvent(self, event: QGraphicsSceneMouseEvent):
 		self._press_points = [QPointF(p) for p in self.points]
 		self._press_scene_pos = QPointF(event.scenePos())
+		self._press_item_pos = QPointF(self.pos())
 		self._dragging_point_index = None
 
 		view: QGraphicsView = event.widget().parent()  # type: ignore
@@ -450,7 +467,7 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 				del self.points[vertex_index]
 				del self.point_ids[vertex_index]
 				self._rebuildPath()
-				self.scene().changed.emit()  # type: ignore
+				self.scene().geometryChanged.emit()  # type: ignore
 			event.accept()
 			return
 
@@ -468,7 +485,7 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 			self.points.insert(insert_after + 1, proj)
 			self.point_ids.insert(insert_after + 1, new_id)
 			self._rebuildPath()
-			self.scene().changed.emit()  # type: ignore
+			self.scene().geometryChanged.emit()  # type: ignore
 			event.accept()
 			return
 
@@ -503,12 +520,12 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 	def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent):
 		if self._dragging_point_index is not None:
 			self._dragging_point_index = None
-			self.scene().changed.emit()  # type: ignore
+			self.scene().geometryChanged.emit()  # type: ignore
 			event.accept()
 			return
 
-		if self._press_points != self.points:
-			self.scene().changed.emit()  # type: ignore
+		if self._press_points != self.points or self._press_item_pos != self.pos():
+			self.scene().geometryChanged.emit()  # type: ignore
 
 		super().mouseReleaseEvent(event)
 
@@ -535,7 +552,8 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 		if option.state & QStyle.StateFlag.State_Selected:
 			pen.setStyle(Qt.PenStyle.DashLine)
 
-		color = QColor(192, 192, 192)
+		label = self.resolvedLabel()
+		color = QColor(label.color) if label is not None else QColor(192, 192, 192)
 		if self.isInterpolated():
 			color = QColor(0, 0, 255)
 		elif self.isKeyframed():
@@ -543,6 +561,8 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 				color = QColor(0, 255, 0)
 			else:
 				color = QColor(255, 255, 0)
+		if self.hasDeadLabel() and not (self.isInterpolated() or self.isKeyframed()):
+			pen.setStyle(Qt.PenStyle.DashLine)
 
 		pen.setColor(color)
 		painter.setPen(pen)

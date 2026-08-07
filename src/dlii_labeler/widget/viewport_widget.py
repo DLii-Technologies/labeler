@@ -22,7 +22,9 @@ from PyQt6.QtGui import (
 	QWheelEvent
 )
 from PyQt6.QtWidgets import (
+	QComboBox,
 	QGraphicsView,
+	QLabel,
 	QMenu,
 	QToolBar,
 	QToolButton,
@@ -100,6 +102,12 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		self._activity_button.setMenu(self._activity_menu)
 		self.activityChanged.connect(lambda activity: self._activity_button.setText(f"Activity: {activity.IDENTIFIER}"))
 
+		self._label_set_combo = QComboBox()
+		self._label_set_combo.setMinimumWidth(180)
+		self._label_set_combo.activated.connect(self._selectLabelSet)
+		self._app.labelSetChanged.connect(self._refreshLabelSets)
+		self._app.labelCatalogChanged.connect(self._refreshLabelSets)
+
 		self._fit_to_window_action = QAction("Recenter", self)
 		self._fit_to_window_action.triggered.connect(self.recenter)
 
@@ -114,7 +122,37 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 	def setupToolBar(self, toolbar: QToolBar) -> None:
 		super().setupToolBar(toolbar)
 		toolbar.addWidget(self._activity_button)
+		toolbar.addSeparator()
+		toolbar.addWidget(QLabel("Label set:"))
+		toolbar.addWidget(self._label_set_combo)
 		toolbar.addAction(self._fit_to_window_action)
+		self._refreshLabelSets()
+
+	def _refreshLabelSets(self, *_args) -> None:
+		current = self._app.labelSet()
+		current_id = current.id if current is not None else None
+		catalog_sets = sorted(self._app.labelCatalog().all(), key=lambda value: value.name.lower())
+		self._label_set_combo.blockSignals(True)
+		try:
+			self._label_set_combo.clear()
+			self._label_set_combo.addItem("No label set", None)
+			catalog_ids = set()
+			for label_set in catalog_sets:
+				catalog_ids.add(label_set.id)
+				self._label_set_combo.addItem(label_set.name, label_set.id)
+			if current is not None and current.id not in catalog_ids:
+				self._label_set_combo.addItem(f"{current.name} (local copy)", current.id)
+			index = self._label_set_combo.findData(current_id)
+			self._label_set_combo.setCurrentIndex(index if index >= 0 else 0)
+		finally:
+			self._label_set_combo.blockSignals(False)
+
+	def _selectLabelSet(self, index: int) -> None:
+		set_id = self._label_set_combo.itemData(index)
+		if set_id is None:
+			self._app.clearLabelSet()
+		else:
+			self._app.setLabelSet(set_id)
 
 	# Public Interface -----------------------------------------------------------------------------
 

@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
 	QFileDialog,
 	QHBoxLayout,
 	QLineEdit,
+	QMessageBox,
 	QPushButton,
 	QVBoxLayout,
 	QWidget
@@ -30,6 +31,7 @@ class YoloExporter(Exporter):
 	def _export_object_detection(self, path: Path, options: Options) -> None:
 		from ..activity.object_detection_activity import ObjectDetectionActivity
 		activity = self.app()._activities[ObjectDetectionActivity.IDENTIFIER]
+		self.validateItems([item for item in activity.items() if isinstance(item, BoxItem)])
 		for frame_index, image_path in enumerate(self.app().mediaManager().imagePaths()):
 			lines = []
 			for item in activity.items():
@@ -39,7 +41,8 @@ class YoloExporter(Exporter):
 					continue
 				state = item.stateForFrame(frame_index)
 				center_uv = QRectF(state.u, state.v, state.width, state.height).center()
-				lines.append(f"0 {center_uv.x()} {center_uv.y()} {state.width} {state.height}")
+				class_id = self.classIdForItem(item)
+				lines.append(f"{class_id} {center_uv.x()} {center_uv.y()} {state.width} {state.height}")
 			if not lines and not options.include_empty_frames:
 				continue
 			with open(path / f"{image_path.stem}.txt", "w") as f:
@@ -48,6 +51,7 @@ class YoloExporter(Exporter):
 	def _export_object_segmentation(self, path: Path, options: Options) -> None:
 		from ..activity.object_segmentation_activity import ObjectSegmentationActivity, PathItem
 		activity = self.app()._activities[ObjectSegmentationActivity.IDENTIFIER]
+		self.validateItems([item for item in activity.items() if isinstance(item, PathItem)])
 		for frame_index, image_path in enumerate(self.app().mediaManager().imagePaths()):
 			lines = []
 			for item in activity.items():
@@ -57,7 +61,8 @@ class YoloExporter(Exporter):
 					continue
 				state = item.stateForFrame(frame_index)
 				points = [QPointF(state.u + x, state.v + y) for x, y in state.points]
-				line = f"0 {' '.join(f'{p.x()} {p.y()}' for p in points)}"
+				class_id = self.classIdForItem(item)
+				line = f"{class_id} {' '.join(f'{p.x()} {p.y()}' for p in points)}"
 				lines.append(line)
 			if not lines and not options.include_empty_frames:
 				continue
@@ -129,4 +134,7 @@ class YoloExporter(Exporter):
 			include_empty_checkbox.isChecked()
 		)
 
-		self.export(Path(self._folder_path_edit.text()), options)
+		try:
+			self.export(Path(self._folder_path_edit.text()), options)
+		except ValueError as error:
+			QMessageBox.warning(dialog, "Cannot Export", str(error))

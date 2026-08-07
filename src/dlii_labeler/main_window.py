@@ -18,6 +18,7 @@ from .widget.pane import Pane
 from .widget.object_properties_widget import ObjectPropertiesWidget
 from .widget.scrubber import Scrubber
 from .widget.viewport_widget import ViewportWidget
+from .widget.label_set_manager import LabelSetManagerDialog
 
 class MainWindow(QMainWindow):
 	WINDOW_DATA_KEY = "main_window_state"
@@ -44,8 +45,16 @@ class MainWindow(QMainWindow):
 		self._scrubber_dock.setWidget(self._scrubber)
 		self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self._scrubber_dock)
 
-
-		for dock in (self._scrubber_dock,):
+		self._object_properties = ObjectPropertiesWidget()
+		self._object_properties.setMinimumSize(0, 0)
+		self._properties_dock = QDockWidget("Properties", self)
+		self._properties_dock.setObjectName("properties_dock")
+		self._properties_dock.setMinimumSize(0, 0)
+		self._properties_dock.setWidget(self._object_properties)
+		self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._properties_dock)
+		self._viewport_widget.activityChanged.connect(self._object_properties.setActivity)
+		self._object_properties.setActivity(self._viewport_widget.activity())
+		for dock in (self._scrubber_dock, self._properties_dock):
 			dock.dockLocationChanged.connect(self._saveWindowState)
 			dock.topLevelChanged.connect(self._saveWindowState)
 			dock.visibilityChanged.connect(self._saveWindowState)
@@ -207,6 +216,18 @@ class MainWindow(QMainWindow):
 			export_menu.addAction(exporter_name, exporter.show)
 		file_menu.addSeparator()
 		file_menu.addAction("Exit", self.close)
+
+		view_menu = self._menu_bar.addMenu("&View")
+		view_menu.addAction(self._properties_dock.toggleViewAction())
+		view_menu.addAction(self._scrubber_dock.toggleViewAction())
+
+		labels_menu = self._menu_bar.addMenu("&Labels")
+		labels_menu.addAction("Manage Label Sets...", self._showLabelSetManager)
+
+
+	def _showLabelSetManager(self) -> None:
+		dialog = LabelSetManagerDialog(self)
+		dialog.exec()
 
 
 	def _populateStatusBar(self):

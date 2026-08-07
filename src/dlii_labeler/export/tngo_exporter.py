@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
 	QFileDialog,
 	QHBoxLayout,
 	QLineEdit,
+	QMessageBox,
 	QPushButton,
 	QVBoxLayout,
 	QWidget,
@@ -46,6 +47,7 @@ class TngoExporter(Exporter):
 		from ..activity.object_detection_activity import ObjectDetectionActivity
 
 		activity = self.app()._activities[ObjectDetectionActivity.IDENTIFIER]
+		self.validateItems([item for item in activity.items() if hasattr(item, "label_id")])
 
 		for frame_index, image_path in enumerate(self.app().mediaManager().imagePaths()):
 			lines = []
@@ -62,7 +64,7 @@ class TngoExporter(Exporter):
 				state = item.stateForFrame(frame_index)
 				center_uv = QRectF(state.u, state.v, state.width, state.height).center()
 
-				class_id = 0
+				class_id = self.classIdForItem(item)
 				lines.append(
 					f"{track_id} {class_id} "
 					f"{center_uv.x()} {center_uv.y()} {state.width} {state.height}"
@@ -86,6 +88,7 @@ class TngoExporter(Exporter):
 		)
 
 		activity = self.app()._activities[ObjectSegmentationActivity.IDENTIFIER]
+		self.validateItems([item for item in activity.items() if isinstance(item, PathItem)])
 
 		for frame_index, image_path in enumerate(self.app().mediaManager().imagePaths()):
 			lines = []
@@ -102,7 +105,7 @@ class TngoExporter(Exporter):
 				state = item.stateForFrame(frame_index)
 				points = [QPointF(state.u + x, state.v + y) for x, y in state.points]
 
-				class_id = 0
+				class_id = self.classIdForItem(item)
 				line = f"{track_id} {class_id} {' '.join(f'{p.x()} {p.y()}' for p in points)}"
 				lines.append(line)
 
@@ -185,4 +188,7 @@ class TngoExporter(Exporter):
 			include_empty_frames=include_empty_checkbox.isChecked(),
 		)
 
-		self.export(Path(self._folder_path_edit.text()), options)
+		try:
+			self.export(Path(self._folder_path_edit.text()), options)
+		except ValueError as error:
+			QMessageBox.warning(dialog, "Cannot Export", str(error))

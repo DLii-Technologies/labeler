@@ -46,6 +46,17 @@ class ActivityGraphicsItem(QGraphicsItem):
 		from ..application import Application
 		return Application.instance()
 
+	def resolvedLabel(self):
+		label_set = self.app().labelSet()
+		return label_set.label(getattr(self, "label_id", None)) if label_set is not None else None
+
+	def activeLabel(self):
+		label_set = self.app().labelSet()
+		return label_set.active_label(getattr(self, "label_id", None)) if label_set is not None else None
+
+	def hasDeadLabel(self) -> bool:
+		return getattr(self, "label_id", None) is not None and self.activeLabel() is None
+
 	def frameSize(self) -> QSize:
 		return self.app().mediaManager().currentFrame().size()
 
@@ -253,6 +264,7 @@ class Activity(QGraphicsScene):
 	DRAG_THRESHOLD = 5
 
 	changed = pyqtSignal()
+	geometryChanged = pyqtSignal()
 
 	def __init__(self, parent = None) -> None:
 		super().__init__(parent)
@@ -266,12 +278,17 @@ class Activity(QGraphicsScene):
 		self._app.mediaManager().frameChanged.connect(self.setPixmap)
 		self._app.folderOpened.connect(self._load)
 		self.changed.connect(self._save)
+		self.geometryChanged.connect(self.changed)
 
 	def _load(self) -> None:
 		data_store = self._app.dataStore()
 		if data_store is None:
 			return
-		self.load(data_store.get(self.IDENTIFIER))
+		data = data_store.get(self.IDENTIFIER)
+		self.load(data)
+		# Persist immediately so legacy string labels are migrated to UUIDs on load.
+		if data is not None:
+			self._save()
 
 
 	def _save(self) -> None:

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 import math
-from typing import Dict
+from typing import Any, Dict, Optional
 from PyQt6.QtCore import (
 	QRectF,
 	QPointF,
@@ -56,13 +56,20 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 		Sides.S | Sides.W: Qt.CursorShape.SizeBDiagCursor
 	}
 
-	def __init__(self, rect: QRectF = QRectF(), label: str = "", parent=None):
+	def __init__(
+		self,
+		rect: QRectF = QRectF(),
+		label_id: Optional[str] = None,
+		metadata: Optional[Dict[str, Any]] = None,
+		parent=None,
+	):
 		# adjust rect so that top-left is (0.0, 0.0)
 		pos = rect.topLeft()
 		rect = QRectF(rect.topLeft() - rect.topLeft(), rect.bottomRight() - rect.topLeft())
 		super().__init__(rect, parent)
 		self.setPos(pos)
-		self.label = label
+		self.label_id = label_id
+		self.metadata: Dict[str, Any] = dict(metadata or {})
 		self.setZValue(9999)
 		self.setFlags(
 			QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
@@ -81,7 +88,14 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 		super().load(data)
 		self.setPos(self.fromU(data["u"]), self.fromV(data["v"]))
 		self.setRect(QRectF(0, 0, self.fromU(data["width"]), self.fromV(data["height"])))
-		self.label = data["label"]
+		self.label_id = data.get("label_id")
+		if not isinstance(self.label_id, str):
+			legacy_name = data.get("label", "")
+			label_set = self.app().labelSet()
+			label = label_set.label_named(legacy_name) if label_set is not None and isinstance(legacy_name, str) else None
+			self.label_id = label.id if label is not None else None
+		raw_metadata = data.get("metadata", {})
+		self.metadata = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
 
 
 	def dump(self) -> Dict:
@@ -90,7 +104,8 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 			"v": self.v(),
 			"width": self.toU(self.rect().width()),
 			"height": self.toV(self.rect().height()),
-			"label": self.label
+			"label_id": self.label_id,
+			"metadata": dict(self.metadata),
 		}
 
 
@@ -208,8 +223,9 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 
 
 	def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent):
-		if self._press_rect != self.rect():
-			self.scene().changed.emit() # type: ignore
+		current_rect = QRectF(self.pos(), self.rect().size())
+		if self._press_rect != current_rect:
+			self.scene().geometryChanged.emit() # type: ignore
 		if self._resizing:
 			self._resizing = False
 			self._resizing_handle = self.Sides.NONE
@@ -235,7 +251,8 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 			# brush = QColor(0, 255, 0, 24)
 			pen.setStyle(Qt.PenStyle.DashLine)
 
-		color = QColor(192, 192, 192)
+		label = self.resolvedLabel()
+		color = QColor(label.color) if label is not None else QColor(192, 192, 192)
 		if self.isInterpolated():
 			color = QColor(0, 0, 255)
 		elif self.isKeyframed():
@@ -243,6 +260,8 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 				color = QColor(0, 255, 0)
 			else:
 				color = QColor(255, 255, 0)
+		if self.hasDeadLabel() and not (self.isInterpolated() or self.isKeyframed()):
+			pen.setStyle(Qt.PenStyle.DashLine)
 		pen.setColor(color)
 		pen.setCosmetic(True)
 

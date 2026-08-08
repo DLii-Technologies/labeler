@@ -151,8 +151,9 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 	def load(self, data: Dict):
 		super().load(data)
 		self.setPos(self.fromU(data["u"]), self.fromV(data["v"]))
-		self.label_id = data.get("label_id")
-		if not isinstance(self.label_id, str):
+		raw_label_id = data.get("label_id")
+		self.label_id = raw_label_id.strip() if isinstance(raw_label_id, str) and raw_label_id.strip() else None
+		if self.label_id is None:
 			legacy_name = data.get("label", "")
 			label_set = self.app().labelSet()
 			label = label_set.label_named(legacy_name) if label_set is not None and isinstance(legacy_name, str) else None

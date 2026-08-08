@@ -272,12 +272,14 @@ class Activity(QGraphicsScene):
 		self.addItem(self._frame)
 
 		self._current_selection: set[QGraphicsItem] = set()
+		self._loading = False
 
 		from ..application import Application
 		self._app = Application.instance()
 		self._app.mediaManager().frameChanged.connect(self.setPixmap)
 		self._app.folderOpened.connect(self._load)
 		self.changed.connect(self._save)
+		self.selectionChanged.connect(self._saveSelection)
 		self.geometryChanged.connect(self.changed)
 
 	def _load(self) -> None:
@@ -297,6 +299,10 @@ class Activity(QGraphicsScene):
 			return
 		data_store.set(self.IDENTIFIER, self.dump())
 
+	def _saveSelection(self) -> None:
+		if not self._loading:
+			self._save()
+
 
 	def clear(self) -> None:
 		for item in self.items():
@@ -305,22 +311,29 @@ class Activity(QGraphicsScene):
 
 
 	def load(self, data: Optional[Dict]) -> None:
-		self.clear()
-		if data is None:
-			return
-		for module, name, data in data.get("items", []):
-			item = getattr(sys.modules[module], name)()
-			self.addItem(item)
-			item.load(data)
+		self._loading = True
+		try:
+			self.clear()
+			if data is None:
+				return
+			for module, name, item_data in data.get("items", []):
+				item = getattr(sys.modules[module], name)()
+				self.addItem(item)
+				item.load(item_data)
+				item.setSelected(item_data.get("selected", False) is True)
+		finally:
+			self._loading = False
 
 
 	def dump(self) -> Dict:
-		return {
-			"items": [
-				(item.__module__, item.__class__.__name__, item.dump())
-				for item in self.items() if isinstance(item, SaveableGraphicsItem)
-			]
-		}
+		items = []
+		for item in self.items():
+			if not isinstance(item, SaveableGraphicsItem):
+				continue
+			item_data = item.dump()
+			item_data["selected"] = item.isSelected()
+			items.append((item.__module__, item.__class__.__name__, item_data))
+		return {"items": items}
 
 	def setPixmap(self, image: QPixmap) -> None:
 		self._frame.setPixmap(image)

@@ -1,8 +1,6 @@
-import json
 from pathlib import Path
 from typing import Dict, Optional, Union
 from PyQt6.QtCore import (
-	QFile,
 	QEvent,
 	QStandardPaths,
 	QTimer,
@@ -23,7 +21,18 @@ from PyQt6.QtWidgets import (
 	QWidget
 )
 
-from .gen import resources_rc
+try:
+	from .gen.manifest import MANIFEST
+except ModuleNotFoundError:
+	# The build script generates this module. Keep source checkouts usable before
+	# the first build as well.
+	MANIFEST = {
+		"name": "dlii-labeler",
+		"display_name": "Labeler",
+		"version": "0.2.0",
+		"organization": "DLii Technologies",
+		"organization_domain": "dlii.tech",
+	}
 from .activity import Activity
 from .activity.object_detection_activity import ObjectDetectionActivity
 from .activity.object_segmentation_activity import ObjectSegmentationActivity
@@ -55,16 +64,10 @@ class Application(QApplication):
 		self._data_store: Optional[DataStore] = None
 		self._folder_path: Optional[Path] = None
 
-		manifest = QFile(":/manifest.json")
-		manifest.open(QFile.OpenModeFlag.ReadOnly | QFile.OpenModeFlag.Text)
-		manifest_data = manifest.readAll().data().decode("utf-8")
-		manifest.close()
-		manifest = json.loads(manifest_data)
-
-		self.setApplicationName(manifest["display_name"])
-		self.setApplicationVersion(manifest["version"])
-		self.setOrganizationName(manifest["organization"])
-		self.setOrganizationDomain(manifest["organization_domain"])
+		self.setApplicationName(MANIFEST["display_name"])
+		self.setApplicationVersion(MANIFEST["version"])
+		self.setOrganizationName(MANIFEST["organization"])
+		self.setOrganizationDomain(MANIFEST["organization_domain"])
 
 		app_data_path = Path(
 			QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)

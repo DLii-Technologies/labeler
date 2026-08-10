@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ..activity.object_detection_activity import BoxItem
-from . import Exporter
+from . import Exporter, UnassignedObjectsError
 
 class YoloExporter(Exporter):
 
@@ -71,10 +71,13 @@ class YoloExporter(Exporter):
 
 
 	def export(self, path: Path, options: Options) -> None:
+		self.validateItems(self.projectItems())
+		path.mkdir(parents=True, exist_ok=True)
 		if options.object_detection:
 			self._export_object_detection(path, options)
 		if options.object_segmentation:
 			self._export_object_segmentation(path, options)
+		self.exportMetadata(path)
 
 	def show(self, parent: Optional[QWidget] = None) -> None:
 		# Show a modal dialog with options
@@ -101,12 +104,14 @@ class YoloExporter(Exporter):
 		layout.addLayout(folder_layout)
 
 		# Add option checkboxes
+		object_detection_default, object_segmentation_default = self.annotationTypeDefaults()
+
 		object_detection_checkbox = QCheckBox("Object Detection")
-		object_detection_checkbox.setChecked(True)
+		object_detection_checkbox.setChecked(object_detection_default)
 		layout.addWidget(object_detection_checkbox)
 
 		object_segmentation_checkbox = QCheckBox("Object Segmentation")
-		object_segmentation_checkbox.setChecked(False)
+		object_segmentation_checkbox.setChecked(object_segmentation_default)
 		layout.addWidget(object_segmentation_checkbox)
 
 		# Add option checkboxes
@@ -136,5 +141,19 @@ class YoloExporter(Exporter):
 
 		try:
 			self.export(Path(self._folder_path_edit.text()), options)
+		except UnassignedObjectsError as error:
+			answer = QMessageBox.question(
+				dialog,
+				"Unassigned Objects",
+				f"{error}\n\nExport unassigned objects with class ID -1?",
+				QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+				QMessageBox.StandardButton.No,
+			)
+			if answer == QMessageBox.StandardButton.Yes:
+				try:
+					with self.allowingUnassigned():
+						self.export(Path(self._folder_path_edit.text()), options)
+				except ValueError as retry_error:
+					QMessageBox.warning(dialog, "Cannot Export", str(retry_error))
 		except ValueError as error:
 			QMessageBox.warning(dialog, "Cannot Export", str(error))

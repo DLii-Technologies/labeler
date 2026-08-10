@@ -29,7 +29,7 @@ except ModuleNotFoundError:
 	MANIFEST = {
 		"name": "dlii-labeler",
 		"display_name": "Labeler",
-		"version": "0.2.0",
+		"version": "0.0.0",
 		"organization": "DLii Technologies",
 		"organization_domain": "dlii.tech",
 	}

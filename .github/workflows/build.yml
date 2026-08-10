@@ -1,9 +1,9 @@
-name: Build applications
+name: Release applications
 
 on:
   push:
-    branches:
-      - master
+    tags:
+      - "v*"
   workflow_dispatch:
 
 permissions:
@@ -19,13 +19,13 @@ jobs:
         include:
           - platform: linux
             runner: ubuntu-latest
-            artifact_path: "dist/dlii_labeler"
+            archive_path: "dist/dlii-labeler-linux.tar.gz"
           - platform: macos
             runner: macos-latest
-            artifact_path: "dist/dlii_labeler.app"
+            archive_path: "dist/dlii-labeler-macos.tar.gz"
           - platform: windows
             runner: windows-latest
-            artifact_path: "dist/dlii_labeler.exe"
+            archive_path: "dist/dlii-labeler-windows.zip"
 
     steps:
       - name: Check out source
@@ -43,9 +43,42 @@ jobs:
       - name: Build executable
         run: python scripts/build.py
 
-      - name: Upload executable
+      - name: Package executable
+        if: runner.os == 'Linux'
+        run: tar -czf dist/dlii-labeler-linux.tar.gz -C dist dlii_labeler
+
+      - name: Package application bundle
+        if: runner.os == 'macOS'
+        run: tar -czf dist/dlii-labeler-macos.tar.gz -C dist dlii_labeler.app
+
+      - name: Package executable
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path dist/dlii_labeler.exe -DestinationPath dist/dlii-labeler-windows.zip
+
+      - name: Upload release archive
         uses: actions/upload-artifact@v4
         with:
           name: dlii-labeler-${{ matrix.platform }}
-          path: ${{ matrix.artifact_path }}
+          path: ${{ matrix.archive_path }}
           if-no-files-found: error
+
+  release:
+    name: Create GitHub release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download release archives
+        uses: actions/download-artifact@v4
+        with:
+          pattern: dlii-labeler-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release-assets/* --verify-tag --generate-notes

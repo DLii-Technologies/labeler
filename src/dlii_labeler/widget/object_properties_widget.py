@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ..activity import Activity
+from ..activity.perspective_plane_activity import PerspectivePlaneItem
 from ..label_sets import MetadataField, MetadataFieldType
 
 
@@ -25,6 +26,7 @@ class ObjectPropertiesWidget(QWidget):
 
 		self._activity: Optional[Activity] = None
 		self._items = []
+		self._plane_items: list[PerspectivePlaneItem] = []
 		self._values = {"x": 0.0, "y": 0.0}
 		self._metadata_editors: list[tuple[MetadataField, QLineEdit]] = []
 		self._refresh_pending = False
@@ -54,6 +56,15 @@ class ObjectPropertiesWidget(QWidget):
 		self._label.lineEdit().editingFinished.connect(self._setLabelFromText)
 		self._form.addRow("Label", self._label)
 
+		self._plane = QComboBox()
+		self._plane.activated.connect(self._selectPlane)
+		self._form.addRow("Transform plane", self._plane)
+
+		self._plane_name = QLineEdit()
+		self._plane_name.editingFinished.connect(self._setPlaneName)
+		self._form.addRow("Plane name", self._plane_name)
+		self._form.setRowVisible(self._plane_name, False)
+
 		self._x = self._createPositionSpinBox()
 		self._x.setPrefix("X: ")
 		self._x.valueChanged.connect(lambda value: self._setPosition("x", value))
@@ -62,13 +73,13 @@ class ObjectPropertiesWidget(QWidget):
 		self._y.setPrefix("Y: ")
 		self._y.valueChanged.connect(lambda value: self._setPosition("y", value))
 
-		position_inputs = QWidget()
-		position_layout = QVBoxLayout(position_inputs)
+		self._position_inputs = QWidget()
+		position_layout = QVBoxLayout(self._position_inputs)
 		position_layout.setContentsMargins(0, 0, 0, 0)
 		position_layout.setSpacing(2)
 		position_layout.addWidget(self._x)
 		position_layout.addWidget(self._y)
-		self._form.addRow("Position (X, Y)", position_inputs)
+		self._form.addRow("Position (X, Y)", self._position_inputs)
 
 		self._details.setLayout(self._form)
 		properties_layout.addWidget(self._details)
@@ -78,6 +89,7 @@ class ObjectPropertiesWidget(QWidget):
 		layout.addStretch()
 		self.setLayout(layout)
 		self._app.labelSetChanged.connect(self._scheduleRefresh)
+		self._app.perspectivePlanes().updated.connect(self._scheduleRefresh)
 		self._app.mediaManager().frameIndexChanged.connect(self._scheduleRefresh)
 		self._app.aboutToQuit.connect(self._disconnectActivity)
 
@@ -116,6 +128,7 @@ class ObjectPropertiesWidget(QWidget):
 		self._disconnectActivity()
 		try:
 			self._app.labelSetChanged.disconnect(self._scheduleRefresh)
+			self._app.perspectivePlanes().updated.disconnect(self._scheduleRefresh)
 			self._app.mediaManager().frameIndexChanged.disconnect(self._scheduleRefresh)
 		except (TypeError, RuntimeError):
 			pass
@@ -123,6 +136,8 @@ class ObjectPropertiesWidget(QWidget):
 
 	def _setEnabled(self, enabled: bool) -> None:
 		self._label.setEnabled(enabled)
+		self._plane.setEnabled(enabled)
+		self._plane_name.setEnabled(enabled)
 		self._x.setEnabled(enabled)
 		self._y.setEnabled(enabled)
 
@@ -146,13 +161,22 @@ class ObjectPropertiesWidget(QWidget):
 	def _refreshContents(self) -> None:
 		if self._activity is None:
 			self._items = []
+			self._plane_items = []
 		else:
 			self._items = [
 				item for item in self._activity.selectedItems()
 				if hasattr(item, "label_id")
 			]
+			self._plane_items = [
+				item for item in self._activity.selectedItems()
+				if isinstance(item, PerspectivePlaneItem)
+			]
 
 		self._clearMetadataFields()
+
+		if self._plane_items:
+			self._refreshPlaneContents()
+			return
 
 		if not self._items:
 			self._no_selection.show()
@@ -163,6 +187,10 @@ class ObjectPropertiesWidget(QWidget):
 		self._no_selection.hide()
 		self._details.show()
 		self._setEnabled(True)
+		self._form.setRowVisible(self._label, True)
+		self._form.setRowVisible(self._plane, True)
+		self._form.setRowVisible(self._position_inputs, True)
+		self._form.setRowVisible(self._plane_name, False)
 		count = len(self._items)
 		self._selection.setText(f"{count} object" + ("" if count == 1 else "s"))
 
@@ -191,6 +219,17 @@ class ObjectPropertiesWidget(QWidget):
 				self._label.setCurrentIndex(-1)
 				self._label.lineEdit().clear()
 
+		plane_ids = {getattr(item, "plane_id", None) for item in self._items}
+		with QSignalBlocker(self._plane):
+			self._plane.clear()
+			self._plane.addItem("None", None)
+			for plane in self._app.perspectivePlanes().all():
+				self._plane.addItem(plane.name, plane.id)
+			if len(plane_ids) == 1:
+				self._plane.setCurrentIndex(self._plane.findData(next(iter(plane_ids))))
+			else:
+				self._plane.setCurrentIndex(-1)
+
 		first_item = self._items[0]
 		self._values = {"x": first_item.x(), "y": first_item.y()}
 		with QSignalBlocker(self._x):
@@ -199,6 +238,32 @@ class ObjectPropertiesWidget(QWidget):
 			self._y.setValue(self._values["y"])
 
 		self._addMetadataFields()
+
+	def _refreshPlaneContents(self) -> None:
+		self._no_selection.hide()
+		self._details.show()
+		self._setEnabled(True)
+		self._form.setRowVisible(self._label, False)
+		self._form.setRowVisible(self._plane, False)
+		self._form.setRowVisible(self._position_inputs, False)
+		self._form.setRowVisible(self._plane_name, True)
+		count = len(self._plane_items)
+		self._selection.setText(f"{count} plane" + ("" if count == 1 else "s"))
+		names = {item.plane.name for item in self._plane_items}
+		with QSignalBlocker(self._plane_name):
+			self._plane_name.setText(next(iter(names)) if len(names) == 1 else "")
+			self._plane_name.setPlaceholderText("Multiple values" if len(names) > 1 else "")
+
+	def _setPlaneName(self) -> None:
+		if not self._plane_items:
+			return
+		name = self._plane_name.text().strip()
+		if not name:
+			self._scheduleRefresh()
+			return
+		for item in self._plane_items:
+			item.plane.name = name
+		self._app.perspectivePlanes().changed()
 
 	def _clearMetadataFields(self) -> None:
 		for _field, editor in self._metadata_editors:
@@ -277,6 +342,16 @@ class ObjectPropertiesWidget(QWidget):
 			return
 		for item in self._items:
 			item.label_id = label_id
+		if self._activity is not None:
+			self._activity.changed.emit()
+		self._scheduleRefresh()
+
+	def _selectPlane(self, index: int) -> None:
+		if not self._items:
+			return
+		plane_id = self._plane.itemData(index)
+		for item in self._items:
+			item.plane_id = plane_id
 		if self._activity is not None:
 			self._activity.changed.emit()
 		self._scheduleRefresh()

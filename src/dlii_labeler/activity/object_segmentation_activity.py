@@ -38,6 +38,8 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 	SHADOW_WIDTH = 16
 	MIN_POINTS = 3
 	EDGE_HIT_WIDTH = 10.0
+	TRANSFORM_HANDLE_SIZE = 9.0
+	ROTATION_HANDLE_OFFSET = 24.0
 
 	@dataclass
 	class State:
@@ -74,6 +76,146 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 		self._press_points: List[QPointF] = []
 		self._press_scene_pos = QPointF()
 		self._press_item_pos = QPointF()
+		self._transform_mode = False
+		self._transform_handle: str | None = None
+		self._transform_start_points: List[QPointF] = []
+		self._transform_start_rect = QRectF()
+		self._transform_press_pos = QPointF()
+		self._transform_pivot = QPointF()
+
+		self._rebuildPath()
+
+	def setTransformMode(self, enabled: bool) -> None:
+		if self._transform_mode == enabled:
+			return
+		self.prepareGeometryChange()
+		self._transform_mode = enabled
+		self._transform_handle = None
+		self.update()
+
+	def transformMode(self) -> bool:
+		return self._transform_mode
+
+	def cancelTransformGesture(self) -> bool:
+		if self._transform_handle is None:
+			return False
+		self.prepareGeometryChange()
+		self.points = [QPointF(point) for point in self._transform_start_points]
+		self._transform_handle = None
+		self._rebuildPath()
+		return True
+
+	def _pointsRect(self) -> QRectF:
+		if not self.points:
+			return QRectF()
+		left = min(point.x() for point in self.points)
+		right = max(point.x() for point in self.points)
+		top = min(point.y() for point in self.points)
+		bottom = max(point.y() for point in self.points)
+		return QRectF(QPointF(left, top), QPointF(right, bottom)).normalized()
+
+	def _transformHandles(self, view: QGraphicsView) -> dict[str, QPointF]:
+		rect = self._pointsRect()
+		offset = self.ROTATION_HANDLE_OFFSET / abs(view.transform().m11())
+		return {
+			"nw": rect.topLeft(),
+			"n": QPointF(rect.center().x(), rect.top()),
+			"ne": rect.topRight(),
+			"e": QPointF(rect.right(), rect.center().y()),
+			"se": rect.bottomRight(),
+			"s": QPointF(rect.center().x(), rect.bottom()),
+			"sw": rect.bottomLeft(),
+			"w": QPointF(rect.left(), rect.center().y()),
+			"rotate": QPointF(rect.center().x(), rect.top() - offset),
+		}
+
+	def _transformHandleAt(self, view: QGraphicsView, pos: QPointF) -> str | None:
+		radius = self.TRANSFORM_HANDLE_SIZE / abs(view.transform().m11())
+		for name, point in self._transformHandles(view).items():
+			dx = pos.x() - point.x()
+			dy = pos.y() - point.y()
+			if dx * dx + dy * dy <= radius * radius:
+				return name
+		return None
+
+	def _transformCursor(self, handle: str | None) -> Qt.CursorShape:
+		if handle in ("e", "w"):
+			return Qt.CursorShape.SizeHorCursor
+		if handle in ("n", "s"):
+			return Qt.CursorShape.SizeVerCursor
+		if handle in ("nw", "se"):
+			return Qt.CursorShape.SizeFDiagCursor
+		if handle in ("ne", "sw"):
+			return Qt.CursorShape.SizeBDiagCursor
+		if handle == "rotate":
+			return Qt.CursorShape.CrossCursor
+		return Qt.CursorShape.ArrowCursor
+
+	def _oppositeTransformAnchor(self, handle: str, rect: QRectF) -> QPointF:
+		x = rect.right() if "w" in handle else rect.left() if "e" in handle else rect.center().x()
+		y = rect.bottom() if "n" in handle else rect.top() if "s" in handle else rect.center().y()
+		return QPointF(x, y)
+
+	def _applyTransformDrag(self, pos: QPointF, modifiers: Qt.KeyboardModifier) -> None:
+		handle = self._transform_handle
+		if handle is None:
+			return
+
+		self.prepareGeometryChange()
+		if handle == "rotate":
+			start_angle = math.atan2(
+				self._transform_press_pos.y() - self._transform_pivot.y(),
+				self._transform_press_pos.x() - self._transform_pivot.x(),
+			)
+			angle = math.atan2(pos.y() - self._transform_pivot.y(), pos.x() - self._transform_pivot.x())
+			delta = angle - start_angle
+			if modifiers & Qt.KeyboardModifier.ShiftModifier:
+				increment = math.radians(15.0)
+				delta = round(delta / increment) * increment
+			cosine = math.cos(delta)
+			sine = math.sin(delta)
+			self.points = [
+				QPointF(
+					self._transform_pivot.x() + (point.x() - self._transform_pivot.x()) * cosine
+					- (point.y() - self._transform_pivot.y()) * sine,
+					self._transform_pivot.y() + (point.x() - self._transform_pivot.x()) * sine
+					+ (point.y() - self._transform_pivot.y()) * cosine,
+				)
+				for point in self._transform_start_points
+			]
+		else:
+			anchor = self._oppositeTransformAnchor(handle, self._transform_start_rect)
+			handle_pos = {
+				"nw": self._transform_start_rect.topLeft(),
+				"n": QPointF(self._transform_start_rect.center().x(), self._transform_start_rect.top()),
+				"ne": self._transform_start_rect.topRight(),
+				"e": QPointF(self._transform_start_rect.right(), self._transform_start_rect.center().y()),
+				"se": self._transform_start_rect.bottomRight(),
+				"s": QPointF(self._transform_start_rect.center().x(), self._transform_start_rect.bottom()),
+				"sw": self._transform_start_rect.bottomLeft(),
+				"w": QPointF(self._transform_start_rect.left(), self._transform_start_rect.center().y()),
+			}[handle]
+			sx = 1.0
+			sy = 1.0
+			if "e" in handle or "w" in handle:
+				denominator = handle_pos.x() - anchor.x()
+				if abs(denominator) > 1e-12:
+					sx = (pos.x() - anchor.x()) / denominator
+			if "n" in handle or "s" in handle:
+				denominator = handle_pos.y() - anchor.y()
+				if abs(denominator) > 1e-12:
+					sy = (pos.y() - anchor.y()) / denominator
+			if modifiers & Qt.KeyboardModifier.ShiftModifier and len(handle) == 2:
+				scale = sx if abs(sx - 1.0) >= abs(sy - 1.0) else sy
+				sx = math.copysign(abs(scale), sx)
+				sy = math.copysign(abs(scale), sy)
+			self.points = [
+				QPointF(
+					anchor.x() + (point.x() - anchor.x()) * sx,
+					anchor.y() + (point.y() - anchor.y()) * sy,
+				)
+				for point in self._transform_start_points
+			]
 
 		self._rebuildPath()
 
@@ -408,15 +550,59 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 
 	def boundingRect(self) -> QRectF:
 		offset = int(math.ceil(self.SHADOW_WIDTH / 2))
+		if self._transform_mode:
+			offset = max(offset, int(self.ROTATION_HANDLE_OFFSET + self.TRANSFORM_HANDLE_SIZE))
 		return super().boundingRect().adjusted(-offset, -offset, offset, offset)
 
 	def shape(self) -> QPainterPath:
 		stroker = QPainterPathStroker()
 		stroker.setWidth(10.0)
-		return stroker.createStroke(self.path())
+		shape = stroker.createStroke(self.path())
+
+		# A deselected mask must retain the normal polygon-outline hit area. Once
+		# selected, add only the visible transform controls—not the empty space
+		# inside or around their bounding rectangle.
+		if not self._transform_mode or not self.isSelected() or self.scene() is None:
+			return shape
+		views = self.scene().views()
+		if not views:
+			return shape
+
+		view = views[0]
+		scale = abs(view.transform().m11())
+		if scale <= 1e-12:
+			return shape
+		handles = self._transformHandles(view)
+		handle_radius = self.TRANSFORM_HANDLE_SIZE / scale
+
+		controls = QPainterPath()
+		box_path = QPainterPath()
+		box_path.addRect(self._pointsRect())
+		control_stroker = QPainterPathStroker()
+		control_stroker.setWidth(10.0 / scale)
+		controls.addPath(control_stroker.createStroke(box_path))
+
+		rotation_path = QPainterPath()
+		rotation_path.moveTo(QPointF(self._pointsRect().center().x(), self._pointsRect().top()))
+		rotation_path.lineTo(handles["rotate"])
+		controls.addPath(control_stroker.createStroke(rotation_path))
+
+		for point in handles.values():
+			controls.addEllipse(point, handle_radius, handle_radius)
+
+		shape.addPath(controls)
+		return shape
 
 	def hoverMoveEvent(self, event: QGraphicsSceneHoverEvent):
 		view: QGraphicsView = event.widget().parent()  # type: ignore
+		if self.isSelected() and self._transform_mode:
+			handle = self._transformHandleAt(view, event.pos())
+			if handle is None and self._pointsRect().contains(event.pos()):
+				self.setCursor(Qt.CursorShape.SizeAllCursor)
+			else:
+				self.setCursor(self._transformCursor(handle))
+			event.accept()
+			return
 
 		if self.isSelected():
 			vertex_index = self._vertexAt(view, event.pos())
@@ -453,6 +639,21 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 		self._dragging_point_index = None
 
 		view: QGraphicsView = event.widget().parent()  # type: ignore
+		if self.isSelected() and self._transform_mode and event.button() == Qt.MouseButton.LeftButton:
+			handle = self._transformHandleAt(view, event.pos())
+			if handle is not None:
+				self._transform_handle = handle
+				self._transform_start_points = [QPointF(point) for point in self.points]
+				self._transform_start_rect = self._pointsRect()
+				self._transform_press_pos = QPointF(event.pos())
+				self._transform_pivot = self._transform_start_rect.center()
+				event.accept()
+				return
+
+		if self._transform_mode:
+			super().mousePressEvent(event)
+			return
+
 		vertex_index = self._vertexAt(view, event.pos())
 		edge_hit = self._edgeAt(view, event.pos())
 
@@ -509,6 +710,11 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 		super().mousePressEvent(event)
 
 	def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent):
+		if self._transform_handle is not None:
+			self._applyTransformDrag(event.pos(), event.modifiers())
+			event.accept()
+			return
+
 		if self._dragging_point_index is not None:
 			self.prepareGeometryChange()
 			self.points[self._dragging_point_index] = QPointF(event.pos())
@@ -519,6 +725,12 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 		super().mouseMoveEvent(event)
 
 	def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent):
+		if self._transform_handle is not None:
+			self._transform_handle = None
+			self.scene().geometryChanged.emit()  # type: ignore
+			event.accept()
+			return
+
 		if self._dragging_point_index is not None:
 			self._dragging_point_index = None
 			self.scene().geometryChanged.emit()  # type: ignore
@@ -550,7 +762,7 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 		pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
 		pen.setCapStyle(Qt.PenCapStyle.RoundCap)
 
-		if option.state & QStyle.StateFlag.State_Selected:
+		if option.state & QStyle.StateFlag.State_Selected and not self._transform_mode:
 			pen.setStyle(Qt.PenStyle.DashLine)
 
 		label = self.resolvedLabel()
@@ -587,6 +799,31 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 			r = handle_size / 2.0
 			for pt in self.points:
 				painter.drawRect(QRectF(pt.x() - r, pt.y() - r, handle_size, handle_size))
+
+		if option.state & QStyle.StateFlag.State_Selected and self._transform_mode:
+			view = widget.parent() if widget is not None and widget.parent() is not None else None
+			if isinstance(view, QGraphicsView):
+				handles = self._transformHandles(view)
+				handle_size = self.TRANSFORM_HANDLE_SIZE / abs(view.transform().m11())
+			else:
+				handles = {}
+				handle_size = self.TRANSFORM_HANDLE_SIZE
+			box = self._pointsRect()
+			transform_pen = QPen(QColor(255, 255, 255))
+			transform_pen.setCosmetic(True)
+			transform_pen.setStyle(Qt.PenStyle.DashLine)
+			painter.setPen(transform_pen)
+			painter.setBrush(Qt.BrushStyle.NoBrush)
+			painter.drawRect(box)
+			if "rotate" in handles:
+				painter.drawLine(QPointF(box.center().x(), box.top()), handles["rotate"])
+			painter.setBrush(QColor(0, 0, 0))
+			radius = handle_size / 2.0
+			for name, point in handles.items():
+				if name == "rotate":
+					painter.drawEllipse(point, radius, radius)
+				else:
+					painter.drawRect(QRectF(point.x() - radius, point.y() - radius, handle_size, handle_size))
 
 	def __hash__(self):
 		return hash(id(self))
@@ -790,6 +1027,25 @@ class ObjectSegmentationActivity(Activity):
 							self._isNearStart(self._preview_pos)
 						)
 						self._rebuildPreviewPath()
+				event.accept()
+				return
+
+		if event.key() == Qt.Key.Key_Escape:
+			for item in self.selectedItems():
+				if isinstance(item, PathItem):
+					if item.cancelTransformGesture():
+						item.update()
+					else:
+						item.setTransformMode(False)
+			event.accept()
+			return
+
+		if event.key() == Qt.Key.Key_T:
+			paths = [item for item in self.selectedItems() if isinstance(item, PathItem)]
+			if paths:
+				enabled = not all(item.transformMode() for item in paths)
+				for item in paths:
+					item.setTransformMode(enabled)
 				event.accept()
 				return
 

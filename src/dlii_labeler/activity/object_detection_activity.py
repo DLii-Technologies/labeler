@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import math
+import numpy as np
 from typing import Any, Dict, Optional
 from PyQt6.QtCore import (
 	QRectF,
@@ -21,7 +22,8 @@ from PyQt6.QtWidgets import (
 	QStyleOptionGraphicsItem
 )
 
-from . import Activity, Keyframe, KeyframeableGraphicsItem, SaveableGraphicsItem
+from . import KeyframeableGraphicsItem, SaveableGraphicsItem
+from .perspective_plane_activity import PerspectivePlaneActivity
 
 class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem):
 
@@ -61,6 +63,7 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 		rect: QRectF = QRectF(),
 		label_id: Optional[str] = None,
 		metadata: Optional[Dict[str, Any]] = None,
+		plane_id: Optional[str] = None,
 		parent=None,
 	):
 		# adjust rect so that top-left is (0.0, 0.0)
@@ -70,6 +73,7 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 		self.setPos(pos)
 		self.label_id = label_id
 		self.metadata: Dict[str, Any] = dict(metadata or {})
+		self.plane_id = plane_id
 		self.setZValue(9999)
 		self.setFlags(
 			QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
@@ -82,6 +86,9 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 
 		self._press_rect = QRectF()
 		self._press_anchor = QPointF()
+		self._plane_dragging = False
+		self._plane_press_uv = QPointF()
+		self._plane_start_uv: list[QPointF] = []
 
 
 	def load(self, data: Dict):
@@ -97,6 +104,7 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 			self.label_id = label.id if label is not None else None
 		raw_metadata = data.get("metadata", {})
 		self.metadata = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
+		self.plane_id = data.get("plane_id")
 
 
 	def dump(self) -> Dict:
@@ -107,7 +115,48 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 			"height": self.toV(self.rect().height()),
 			"label_id": self.label_id,
 			"metadata": dict(self.metadata),
+			"plane_id": self.plane_id,
 		}
+
+
+	def _startPlaneDrag(self, event: QGraphicsSceneMouseEvent) -> bool:
+		plane = self.app().perspectivePlanes().get(self.plane_id)
+		if plane is None:
+			return False
+		size = self.frameSize()
+		try:
+			self._plane_press_uv = plane.imageToPlane(event.scenePos(), size)
+			rect = QRectF(self.pos(), self.rect().size())
+			points = [rect.topLeft(), rect.topRight(), rect.bottomRight(), rect.bottomLeft()]
+			self._plane_start_uv = [plane.imageToPlane(point, size) for point in points]
+		except np.linalg.LinAlgError:
+			return False
+		if not event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+			self.scene().clearSelection()  # type: ignore
+		self.setSelected(True)
+		self._plane_dragging = True
+		event.accept()
+		return True
+
+
+	def _moveOnPlane(self, scene_pos: QPointF) -> None:
+		plane = self.app().perspectivePlanes().get(self.plane_id)
+		if plane is None:
+			return
+		size = self.frameSize()
+		try:
+			current_uv = plane.imageToPlane(scene_pos, size)
+			delta = current_uv - self._plane_press_uv
+			points = [plane.planeToImage(point + delta, size) for point in self._plane_start_uv]
+		except np.linalg.LinAlgError:
+			return
+		left = min(point.x() for point in points)
+		right = max(point.x() for point in points)
+		top = min(point.y() for point in points)
+		bottom = max(point.y() for point in points)
+		self.prepareGeometryChange()
+		self.setPos(left, top)
+		self.setRect(QRectF(0.0, 0.0, max(self.MIN_SIZE, right - left), max(self.MIN_SIZE, bottom - top)))
 
 
 	def currentState(self) -> State:
@@ -194,10 +243,16 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 				self.setSelected(True)
 				event.accept()
 				return
+			if self._startPlaneDrag(event):
+				return
 		super().mousePressEvent(event)
 
 
 	def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent):
+		if self._plane_dragging:
+			self._moveOnPlane(event.scenePos())
+			event.accept()
+			return
 		if self._resizing: # type: ignore
 			delta = event.scenePos() - self._press_anchor
 			rect = QRectF(self._press_rect)
@@ -230,6 +285,10 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 		if self._resizing:
 			self._resizing = False
 			self._resizing_handle = self.Sides.NONE
+			event.accept()
+			return
+		if self._plane_dragging:
+			self._plane_dragging = False
 			event.accept()
 			return
 		super().mouseReleaseEvent(event)
@@ -304,7 +363,7 @@ class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem)
 		return id(self) == id(other)
 
 
-class ObjectDetectionActivity(Activity):
+class ObjectDetectionActivity(PerspectivePlaneActivity):
 
 	IDENTIFIER = "Object Detection"
 

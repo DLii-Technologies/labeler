@@ -36,10 +36,12 @@ except ModuleNotFoundError:
 from .activity import Activity
 from .activity.object_detection_activity import ObjectDetectionActivity
 from .activity.object_segmentation_activity import ObjectSegmentationActivity
+from .activity.perspective_plane_activity import PerspectivePlaneEditorActivity
 from .data_store import DataStore
 from .export.tngo_exporter import TngoExporter
 from .export.yolo_exporter import YoloExporter
 from .media_manager import MediaManager
+from .perspective_plane import PerspectivePlaneStore
 from .label_sets import (
 	DEFAULT_LABEL_COLORS,
 	LabelSet,
@@ -77,9 +79,11 @@ class Application(QApplication):
 
 		self._media_manager = MediaManager()
 		self._media_manager.frameIndexChanged.connect(self._saveCurrentFrame)
+		self._perspective_planes = PerspectivePlaneStore(self)
 
 		self._activities = {
 			Activity.IDENTIFIER: Activity(),
+			PerspectivePlaneEditorActivity.IDENTIFIER: PerspectivePlaneEditorActivity(),
 			ObjectDetectionActivity.IDENTIFIER: ObjectDetectionActivity(),
 			ObjectSegmentationActivity.IDENTIFIER: ObjectSegmentationActivity()
 		}
@@ -249,6 +253,9 @@ class Application(QApplication):
 
 	def mediaManager(self) -> MediaManager:
 		return self._media_manager
+
+	def perspectivePlanes(self) -> PerspectivePlaneStore:
+		return self._perspective_planes
 
 	def folderPath(self) -> Path:
 		return self._folder_path

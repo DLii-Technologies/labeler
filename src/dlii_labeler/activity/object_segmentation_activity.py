@@ -28,7 +28,8 @@ from PyQt6.QtWidgets import (
 	QStyleOptionGraphicsItem,
 )
 
-from . import Activity, KeyframeableGraphicsItem, SaveableGraphicsItem
+from . import KeyframeableGraphicsItem, SaveableGraphicsItem
+from .perspective_plane_activity import PerspectivePlaneActivity
 
 
 class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem):
@@ -54,11 +55,13 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 		points: List[QPointF] | None = None,
 		label_id: Optional[str] = None,
 		metadata: Optional[Dict[str, Any]] = None,
+		plane_id: Optional[str] = None,
 		parent=None,
 	):
 		super().__init__(parent)
 		self.label_id = label_id
 		self.metadata: Dict[str, Any] = dict(metadata or {})
+		self.plane_id = plane_id
 		self.closed = True
 		self.points: List[QPointF] = [QPointF(p) for p in (points or [])]
 		self.point_ids: list[int] = list(range(len(self.points)))
@@ -82,6 +85,9 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 		self._transform_start_rect = QRectF()
 		self._transform_press_pos = QPointF()
 		self._transform_pivot = QPointF()
+		self._plane_dragging = False
+		self._plane_press_uv = QPointF()
+		self._plane_start_uv: list[QPointF] = []
 
 		self._rebuildPath()
 
@@ -302,6 +308,7 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 			self.label_id = label.id if label is not None else None
 		raw_metadata = data.get("metadata", {})
 		self.metadata = dict(raw_metadata) if isinstance(raw_metadata, dict) else {}
+		self.plane_id = data.get("plane_id")
 		self.points = [
 			QPointF(self.fromU(x), self.fromV(y))
 			for x, y in data["points"]
@@ -316,7 +323,44 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 			"points": [(self.toU(p.x()), self.toV(p.y())) for p in self.points],
 			"label_id": self.label_id,
 			"metadata": dict(self.metadata),
+			"plane_id": self.plane_id,
 		}
+
+	def _startPlaneDrag(self, event: QGraphicsSceneMouseEvent) -> bool:
+		plane = self.app().perspectivePlanes().get(self.plane_id)
+		if plane is None:
+			return False
+		size = self.frameSize()
+		try:
+			self._plane_press_uv = plane.imageToPlane(event.scenePos(), size)
+			self._plane_start_uv = [
+				plane.imageToPlane(self.mapToScene(point), size) for point in self.points
+			]
+		except np.linalg.LinAlgError:
+			return False
+		if not event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+			self.scene().clearSelection()  # type: ignore
+		self.setSelected(True)
+		self._plane_dragging = True
+		event.accept()
+		return True
+
+	def _moveOnPlane(self, scene_pos: QPointF) -> None:
+		plane = self.app().perspectivePlanes().get(self.plane_id)
+		if plane is None:
+			return
+		size = self.frameSize()
+		try:
+			current_uv = plane.imageToPlane(scene_pos, size)
+			delta = current_uv - self._plane_press_uv
+			scene_points = [
+				plane.planeToImage(point + delta, size) for point in self._plane_start_uv
+			]
+		except np.linalg.LinAlgError:
+			return
+		self.prepareGeometryChange()
+		self.points = [self.mapFromScene(point) for point in scene_points]
+		self._rebuildPath()
 
 	def currentState(self) -> State:
 		return self.State(
@@ -651,6 +695,8 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 				return
 
 		if self._transform_mode:
+			if event.button() == Qt.MouseButton.LeftButton and self._startPlaneDrag(event):
+				return
 			super().mousePressEvent(event)
 			return
 
@@ -707,9 +753,16 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 			event.accept()
 			return
 
+		if event.button() == Qt.MouseButton.LeftButton and self._startPlaneDrag(event):
+			return
+
 		super().mousePressEvent(event)
 
 	def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent):
+		if self._plane_dragging:
+			self._moveOnPlane(event.scenePos())
+			event.accept()
+			return
 		if self._transform_handle is not None:
 			self._applyTransformDrag(event.pos(), event.modifiers())
 			event.accept()
@@ -725,6 +778,11 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 		super().mouseMoveEvent(event)
 
 	def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent):
+		if self._plane_dragging:
+			self._plane_dragging = False
+			self.scene().geometryChanged.emit()  # type: ignore
+			event.accept()
+			return
 		if self._transform_handle is not None:
 			self._transform_handle = None
 			self.scene().geometryChanged.emit()  # type: ignore
@@ -832,7 +890,7 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 		return id(self) == id(other)
 
 
-class ObjectSegmentationActivity(Activity):
+class ObjectSegmentationActivity(PerspectivePlaneActivity):
 
 	IDENTIFIER = "Object Segmentation"
 

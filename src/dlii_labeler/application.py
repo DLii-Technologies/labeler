@@ -276,13 +276,23 @@ class Application(QApplication):
 			folder_path = QFileDialog.getExistingDirectory(parent, "Open Folder", directory=current_directory)
 			if not folder_path:
 				return False
+		folder_path = str(folder_path)
+		image_paths = self._media_manager.scanFolder(folder_path)
+		if not image_paths:
+			QMessageBox.warning(
+				parent,
+				"No images found",
+				"Choose a folder containing PNG, JPG, JPEG, BMP, TIF, or TIFF files. "
+				"Images must be directly inside the selected folder; subfolders are not searched."
+			)
+			return False
 		self._folder_path = Path(folder_path)
 		if self._data_store is not None:
 			self._data_store.close()
 		self._data_store = DataStore(folder_path)
 		self._prepareProjectLabelSet()
 		last_frame = self._data_store.get("last_frame")
-		self._media_manager.setFolder(folder_path)
+		self._media_manager.setFolder(folder_path, image_paths)
 		if isinstance(last_frame, int) and self._media_manager.length() > 0:
 			last_frame = min(max(last_frame, 0), self._media_manager.length() - 1)
 			self._media_manager.setIndex(last_frame)

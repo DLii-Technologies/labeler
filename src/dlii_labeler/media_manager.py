@@ -60,7 +60,7 @@ class MediaManager(QObject):
 	def scanFolder(self, folder_path: Union[Path, str]):
 		image_paths = []
 		for file in Path(folder_path).iterdir():
-			if file.suffix.lower() in self.SUPPORTED_IMAGE_FORMATS:
+			if file.suffix.lower() in self.SUPPORTED_IMAGE_FORMATS and file.is_file():
 				image_paths.append(file)
 		return sorted(image_paths)
 

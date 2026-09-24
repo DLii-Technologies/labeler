@@ -36,8 +36,9 @@ foreach ($withPath in @($false, $true)) {
         Invoke-Msi "/x `"$msi`"" "labeler-uninstall-$withPath.log"
     }
     if (Test-Path "$installDir/dlii_labeler.exe") { throw 'Uninstall left the executable behind' }
-    if ([Environment]::GetEnvironmentVariable('Path', 'User') -cne $originalPath) {
-        throw 'Uninstall did not restore the original user PATH'
+    $restoredPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    if ($restoredPath -cne $originalPath) {
+        throw "Uninstall did not restore the original user PATH (AddToPath=$withPath).`nExpected: [$originalPath]`nActual:   [$restoredPath]"
     }
 }
 Write-Host 'Installer passed: default install, optional PATH, CLI discovery, and uninstall.'

@@ -6,6 +6,12 @@
     <MajorUpgrade DowngradeErrorMessage="A newer version of DLii Labeler is already installed." />
     <MediaTemplate EmbedCab="yes" />
     <Property Id="INSTALLLEVEL" Value="1" />
+    <!-- Restore the selected directory for repair and uninstall. -->
+    <Property Id="INSTALLFOLDER">
+      <RegistrySearch Id="SavedInstallFolder" Root="HKCU"
+                      Key="Software\DLii Technologies\Labeler"
+                      Name="InstallFolder" Type="raw" />
+    </Property>
 
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="ProgramsFolder" Name="Programs">
@@ -17,6 +23,8 @@
             </File>
             <RegistryValue Root="HKCU" Key="Software\DLii Technologies\Labeler"
                            Name="Installed" Type="integer" Value="1" KeyPath="yes" />
+            <RegistryValue Root="HKCU" Key="Software\DLii Technologies\Labeler"
+                           Name="InstallFolder" Type="string" Value="[INSTALLFOLDER]" />
             <RemoveFolder Id="RemoveInstallFolder" On="uninstall" />
             <RemoveFolder Id="RemoveProgramsFolder" Directory="ProgramsFolder" On="uninstall" />
           </Component>

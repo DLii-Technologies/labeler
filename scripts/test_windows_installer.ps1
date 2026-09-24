@@ -37,7 +37,8 @@ foreach ($withPath in @($false, $true)) {
     }
     if (Test-Path "$installDir/dlii_labeler.exe") { throw 'Uninstall left the executable behind' }
     $restoredPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-    if ($restoredPath -cne $originalPath) {
+    # Windows Installer can remove the trailing PATH separator when removing its entry.
+    if (([string]$restoredPath).TrimEnd(';') -cne ([string]$originalPath).TrimEnd(';')) {
         throw "Uninstall did not restore the original user PATH (AddToPath=$withPath).`nExpected: [$originalPath]`nActual:   [$restoredPath]"
     }
 }

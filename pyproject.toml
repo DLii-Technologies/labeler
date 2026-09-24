@@ -7,7 +7,7 @@ authors = [
 description = "A utility for object detection and segmentation labeling."
 readme = "README.md"
 license = { file="LICENSE" }
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 dependencies = [
 	"numpy",
   "opencv-python",

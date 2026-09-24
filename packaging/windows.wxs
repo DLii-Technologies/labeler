@@ -1,0 +1,53 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="DLii Labeler" Manufacturer="DLii Technologies"
+           Version="$(var.Version)" Language="1033" Scope="perUser"
+           UpgradeCode="3D58D72A-7D89-4577-BD4B-36625B122084">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of DLii Labeler is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <Property Id="INSTALLLEVEL" Value="1" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="DLii Labeler">
+          <Component Id="Application">
+            <File Id="LabelerExe" Source="dist/dlii_labeler.exe">
+              <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder"
+                        Name="DLii Labeler" WorkingDirectory="INSTALLFOLDER" Advertise="no" />
+            </File>
+            <RegistryValue Root="HKCU" Key="Software\DLii Technologies\Labeler"
+                           Name="Installed" Type="integer" Value="1" KeyPath="yes" />
+            <RemoveFolder Id="RemoveInstallFolder" On="uninstall" />
+            <RemoveFolder Id="RemoveProgramsFolder" Directory="ProgramsFolder" On="uninstall" />
+          </Component>
+          <Component Id="UserPath">
+            <RegistryValue Root="HKCU" Key="Software\DLii Technologies\Labeler"
+                           Name="PathEnabled" Type="integer" Value="1" KeyPath="yes" />
+            <Environment Id="AddUserPath" Name="PATH" Value="[INSTALLFOLDER]"
+                         Action="set" Part="last" System="no" Permanent="no" />
+          </Component>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <Feature Id="App" Title="DLii Labeler" Level="1" AllowAbsent="no"
+             AllowAdvertise="no" ConfigurableDirectory="INSTALLFOLDER"
+             Description="Install the labeling application and Start menu shortcut.">
+      <ComponentRef Id="Application" />
+    </Feature>
+    <Feature Id="AddToPath" Title="Add to PATH" Level="2" AllowAdvertise="no"
+             Description="Run dlii_labeler from a terminal. Reopen your terminal after installation.">
+      <ComponentRef Id="UserPath" />
+    </Feature>
+
+    <ui:WixUI Id="WixUI_FeatureTree" />
+    <!-- Skip the bundled placeholder license agreement. -->
+    <UI>
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog"
+               Value="CustomizeDlg" Order="3" Condition="NOT Installed" />
+      <Publish Dialog="CustomizeDlg" Control="Back" Event="NewDialog"
+               Value="WelcomeDlg" Order="3" Condition="NOT Installed" />
+    </UI>
+  </Package>
+</Wix>

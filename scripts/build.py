@@ -42,6 +42,11 @@ def main() -> int:
 		help="Keep a console window attached (useful for diagnosing packaged builds)",
 	)
 	args = parser.parse_args()
+	# Fail before deleting old artifacts if SQLite shelves are unsupported.
+	if sys.version_info < (3, 13):
+		parser.error("Building the labeler requires Python 3.13 or newer")
+	import dbm.sqlite3  # Verify the required backend is available.
+
 	# PyInstaller is deprecating one-file + windowed macOS builds. A directory
 	# bundle is the normal macOS application format and produces a .app bundle.
 	macos_app = sys.platform == "darwin" and not args.console
@@ -65,15 +70,11 @@ def main() -> int:
 	# Generate the versioned manifest module before PyInstaller analyzes imports.
 	run([sys.executable, str(ROOT / "scripts/build_resources.py")])
 
-	pyinstaller = shutil.which("pyinstaller")
-	if pyinstaller is not None:
-		pyinstaller_command = [pyinstaller]
-	else:
-		pyinstaller_command = [sys.executable, "-m", "PyInstaller"]
-
-	command = pyinstaller_command + [
+	command = [sys.executable, "-m", "PyInstaller",
 		"--noconfirm",
 		"--clean",
+		"--collect-submodules",
+		"dbm",
 		"--name",
 		args.name,
 		"--paths",

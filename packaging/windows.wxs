@@ -10,7 +10,7 @@
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="ProgramsFolder" Name="Programs">
         <Directory Id="INSTALLFOLDER" Name="DLii Labeler">
-          <Component Id="Application">
+          <Component Id="Application" Guid="82B81F96-0B5E-4DB9-B644-A28BFA03DD6B">
             <File Id="LabelerExe" Source="dist/dlii_labeler.exe">
               <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder"
                         Name="DLii Labeler" WorkingDirectory="INSTALLFOLDER" Advertise="no" />

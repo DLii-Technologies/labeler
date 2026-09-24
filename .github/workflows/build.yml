@@ -1,6 +1,7 @@
-name: Release applications
+name: Build and test applications
 
 on:
+  pull_request:
   push:
     tags:
       - "v*"
@@ -85,6 +86,14 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/test_windows_installer.ps1
+
+      - name: Upload Windows installer logs
+        if: failure() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer-logs
+          path: ${{ runner.temp }}/labeler-*.log
+          if-no-files-found: ignore
 
       - name: Upload release archive
         uses: actions/upload-artifact@v4

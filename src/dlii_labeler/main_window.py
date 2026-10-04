@@ -53,7 +53,9 @@ class MainWindow(QMainWindow):
 		self._properties_dock.setWidget(self._object_properties)
 		self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._properties_dock)
 		self._viewport_widget.activityChanged.connect(self._object_properties.setActivity)
+		self._viewport_widget.activityChanged.connect(self._scrubber.setActivity)
 		self._object_properties.setActivity(self._viewport_widget.activity())
+		self._scrubber.setActivity(self._viewport_widget.activity())
 		for dock in (self._scrubber_dock, self._properties_dock):
 			dock.dockLocationChanged.connect(self._saveWindowState)
 			dock.topLevelChanged.connect(self._saveWindowState)
@@ -70,6 +72,11 @@ class MainWindow(QMainWindow):
 		self._restoreWindowState()
 
 		self._app.mediaManager().folderChanged.connect(self.updateTitle)
+		self._app.projectModifiedChanged.connect(self.setWindowModified)
+		self._app.projectSaving.connect(self._saveWindowState)
+		self._app.projectSaving.connect(self._scrubber._saveLayout)
+		self.updateTitle()
+		self.setWindowModified(self._app.dataStore() is not None and self._app.dataStore().isModified())
 
 
 	def _restoreWindowState(self, *_args) -> None:
@@ -197,7 +204,9 @@ class MainWindow(QMainWindow):
 
 
 	def closeEvent(self, event) -> None:
-		self._saveWindowState()
+		if not self._app.confirmUnsavedChanges(self):
+			event.ignore()
+			return
 		super().closeEvent(event)
 
 
@@ -209,6 +218,12 @@ class MainWindow(QMainWindow):
 		open_folder_action.setShortcut(QKeySequence("Ctrl+O"))
 		open_folder_action.triggered.connect(self.openFolder)
 		file_menu.addAction(open_folder_action)
+		self._save_action = QAction("&Save Project", self)
+		self._save_action.setShortcut(QKeySequence.StandardKey.Save)
+		self._save_action.triggered.connect(self.saveProject)
+		self._save_action.setEnabled(self._app.dataStore() is not None)
+		self._app.folderOpened.connect(lambda *_args: self._save_action.setEnabled(True))
+		file_menu.addAction(self._save_action)
 		file_menu.addSeparator()
 
 		export_menu = file_menu.addMenu("&Export")
@@ -248,7 +263,13 @@ class MainWindow(QMainWindow):
 		title = f"{self._app.applicationName()} v{self._app.applicationVersion()}"
 		if path is not None:
 			title += f" - {path}"
-		self.setWindowTitle(title)
+		self.setWindowTitle(title + "[*]")
+
+	def saveProject(self) -> bool:
+		if not self._app.saveProject(self):
+			return False
+		self._status_bar.showMessage("Project saved", 3000)
+		return True
 
 
 	def openFolder(self) -> bool:

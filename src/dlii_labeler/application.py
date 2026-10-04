@@ -55,6 +55,8 @@ class Application(QApplication):
 	imageChanged = pyqtSignal(QPixmap)
 	labelSetChanged = pyqtSignal()
 	labelCatalogChanged = pyqtSignal()
+	projectModifiedChanged = pyqtSignal(bool)
+	projectSaving = pyqtSignal()
 
 	@classmethod
 	def instance(cls) -> "Application":
@@ -269,6 +271,41 @@ class Application(QApplication):
 			return
 		data_store.set("last_frame", frame_index)
 
+	def saveProject(self, parent: Optional[QWidget] = None) -> bool:
+		if self._data_store is None:
+			return False
+		focused = self.focusWidget()
+		if focused is not None:
+			focused.clearFocus()
+		try:
+			self.projectSaving.emit()
+			for activity in self._activities.values():
+				self._data_store.set(activity.IDENTIFIER, activity.dump())
+			self._data_store.set("perspective_planes", [plane.dump() for plane in self._perspective_planes.all()])
+			self._saveCurrentFrame(self._media_manager.currentFrameIndex())
+			self._data_store.sync()
+		except Exception as error:
+			self._data_store.setModified(True)
+			QMessageBox.critical(parent, "Could not save project", str(error))
+			return False
+		return True
+
+	def confirmUnsavedChanges(self, parent: Optional[QWidget] = None) -> bool:
+		focused = self.focusWidget()
+		if focused is not None:
+			focused.clearFocus()
+		self.projectSaving.emit()
+		if self._data_store is None or not self._data_store.isModified():
+			return True
+		answer = QMessageBox.warning(
+			parent, "Unsaved changes", "Save changes to the current project?",
+			QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+			QMessageBox.StandardButton.Save,
+		)
+		if answer == QMessageBox.StandardButton.Save:
+			return self.saveProject(parent)
+		return answer == QMessageBox.StandardButton.Discard
+
 	def openFolder(self, folder_path: Optional[Union[Path, str]] = None, parent: Optional[QWidget] = None) -> bool:
 		if not folder_path is not None:
 			# Open a file dialog to select a folder of images
@@ -286,10 +323,17 @@ class Application(QApplication):
 				"Images must be directly inside the selected folder; subfolders are not searched."
 			)
 			return False
+		if not self.confirmUnsavedChanges(parent):
+			return False
+		try:
+			data_store = DataStore(folder_path)
+		except Exception as error:
+			QMessageBox.critical(parent, "Could not open project", str(error))
+			return False
 		self._folder_path = Path(folder_path)
 		if self._data_store is not None:
 			self._data_store.close()
-		self._data_store = DataStore(folder_path)
+		self._data_store = data_store
 		self._prepareProjectLabelSet()
 		last_frame = self._data_store.get("last_frame")
 		self._media_manager.setFolder(folder_path, image_paths)
@@ -307,4 +351,7 @@ class Application(QApplication):
 			) == QMessageBox.StandardButton.No:
 				self.exit()
 				return False
+		self._data_store.setModified(False)
+		self._data_store.modifiedChanged.connect(self.projectModifiedChanged)
+		self.projectModifiedChanged.emit(False)
 		return True

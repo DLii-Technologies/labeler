@@ -241,7 +241,7 @@ class PerspectivePlaneActivity(Activity):
 		planes = [item for item in self.selectedItems() if isinstance(item, PerspectivePlaneItem)]
 		for item in planes:
 			self._app.perspectivePlanes().remove(item.plane.id)
-		if any(not isinstance(item, PerspectivePlaneItem) for item in self.selectedItems()):
+		if any(not isinstance(item, PerspectivePlaneItem) for item in self.selectedAnnotationItems()):
 			super().deleteSelected()
 
 	def insertKeyframe(self) -> None:
@@ -251,7 +251,7 @@ class PerspectivePlaneActivity(Activity):
 			item.plane.insertKeyframe(frame)
 		if planes:
 			self._app.perspectivePlanes().changed()
-		if any(not isinstance(item, PerspectivePlaneItem) for item in self.selectedItems()):
+		if any(not isinstance(item, PerspectivePlaneItem) for item in self.selectedAnnotationItems()):
 			super().insertKeyframe()
 
 	def removeKeyframe(self) -> None:
@@ -259,7 +259,7 @@ class PerspectivePlaneActivity(Activity):
 		planes = [item for item in self.selectedItems() if isinstance(item, PerspectivePlaneItem)]
 		if any(item.plane.removeKeyframe(frame) for item in planes):
 			self._app.perspectivePlanes().changed()
-		if any(not isinstance(item, PerspectivePlaneItem) for item in self.selectedItems()):
+		if any(not isinstance(item, PerspectivePlaneItem) for item in self.selectedAnnotationItems()):
 			super().removeKeyframe()
 
 	def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:

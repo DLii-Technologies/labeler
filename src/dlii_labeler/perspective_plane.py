@@ -105,6 +105,7 @@ class PerspectivePlane:
 
 class PerspectivePlaneStore(QObject):
 	updated = pyqtSignal()
+	structureChanged = pyqtSignal()
 
 	DATA_KEY = "perspective_planes"
 
@@ -156,6 +157,7 @@ class PerspectivePlaneStore(QObject):
 		store = self._app.dataStore()
 		if store is not None:
 			store.set(self.DATA_KEY, [plane.dump() for plane in self._planes.values()])
+		self.structureChanged.emit()
 		self.updated.emit()
 
 	def changed(self) -> None:

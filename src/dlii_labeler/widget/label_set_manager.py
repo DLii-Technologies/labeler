@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtCore import Qt
@@ -8,6 +10,7 @@ from PyQt6.QtWidgets import (
 	QColorDialog,
 	QComboBox,
 	QDialog,
+	QFileDialog,
 	QHBoxLayout,
 	QInputDialog,
 	QLabel,
@@ -44,6 +47,10 @@ class LabelSetManagerDialog(QDialog):
 		new_set.clicked.connect(self._newSet)
 		delete_set = QPushButton("Delete Set")
 		delete_set.clicked.connect(self._deleteSet)
+		import_set = QPushButton("Import...")
+		import_set.clicked.connect(self._importSet)
+		export_set = QPushButton("Export...")
+		export_set.clicked.connect(self._exportSet)
 		left_layout = QVBoxLayout()
 		left_layout.addWidget(QLabel("Label Sets"))
 		left_layout.addWidget(self._sets)
@@ -123,6 +130,8 @@ class LabelSetManagerDialog(QDialog):
 		bottom_buttons = QHBoxLayout()
 		bottom_buttons.addWidget(new_set)
 		bottom_buttons.addWidget(delete_set)
+		bottom_buttons.addWidget(import_set)
+		bottom_buttons.addWidget(export_set)
 		bottom_buttons.addStretch()
 		close_button = QPushButton("Close")
 		close_button.clicked.connect(self.reject)
@@ -400,6 +409,53 @@ class LabelSetManagerDialog(QDialog):
 		self._working_set = None
 		self._app.notifyLabelCatalogChanged()
 		self._refreshSets()
+
+	def _importSet(self) -> None:
+		path, _ = QFileDialog.getOpenFileName(self, "Import Label Set", "", "JSON files (*.json)")
+		if not path:
+			return
+		try:
+			with Path(path).open("r", encoding="utf-8") as file:
+				data = json.load(file)
+			if not isinstance(data, dict) or data.get("version") != 1:
+				raise ValueError("Unsupported label set format.")
+			raw_set = data.get("label_set")
+			if not isinstance(raw_set, dict):
+				raise ValueError("Invalid label set data.")
+			label_set = LabelSet.from_dict(raw_set)
+			if label_set is None or label_set.to_dict() != raw_set:
+				raise ValueError("Invalid label set data.")
+		except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError) as error:
+			QMessageBox.warning(self, "Import Label Set", str(error))
+			return
+		if self._app.labelCatalog().get(label_set.id) is not None:
+			answer = QMessageBox.question(
+				self, "Replace Label Set",
+				f"A label set named '{label_set.name}' with this ID already exists. Replace it?",
+				QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+			)
+			if answer != QMessageBox.StandardButton.Yes:
+				return
+		self._working_set = self._app.labelCatalog().save(label_set)
+		self._app.notifyLabelCatalogChanged()
+		self._refreshSets()
+
+	def _exportSet(self) -> None:
+		if self._working_set is None:
+			return
+		path, _ = QFileDialog.getSaveFileName(
+			self, "Export Label Set", f"{self._working_set.name}.json", "JSON files (*.json)"
+		)
+		if not path:
+			return
+		temporary_path = Path(path).with_suffix(Path(path).suffix + ".tmp")
+		try:
+			with temporary_path.open("w", encoding="utf-8") as file:
+				json.dump({"version": 1, "label_set": self._working_set.to_dict()}, file, indent=2)
+			temporary_path.replace(path)
+		except OSError as error:
+			temporary_path.unlink(missing_ok=True)
+			QMessageBox.warning(self, "Export Label Set", str(error))
 
 	def _addLabel(self) -> None:
 		if self._working_set is None:

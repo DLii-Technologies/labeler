@@ -31,6 +31,27 @@ pip install -e .
 
 ## Usage
 
+### Command-line export
+
+Export a saved project without opening the GUI:
+
+```bash
+dlii_labeler export yolo --type detection ./frames ./output
+dlii_labeler export tngo --type segmentation --include-empty-frames ./frames
+python3 -m dlii_labeler export yolo --help
+```
+
+The project folder contains the images and `.dlii_labels` directory. The optional
+output directory defaults to `PROJECT/exports/yolo` or `PROJECT/exports/tngo`.
+Each exporter defines its own options, listed by `export FORMAT --help`.
+`--type` is inferred when only one annotation type exists; projects containing
+both boxes and polygons require an explicit type. `--allow-unassigned` exports
+unassigned objects with class ID `-1`; otherwise these cause an error.
+Exports include `metadata.json`, use saved changes only, and do not save the
+project. Existing output files with matching names are overwritten.
+
+### Graphical interface
+
 Run the labeler with
 
 ```bash

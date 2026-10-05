@@ -26,6 +26,9 @@ dev = [
   "pyinstaller"
 ]
 
+[project.scripts]
+dlii_labeler = "dlii_labeler.__main__:main"
+
 [project.urls]
 "Homepage" = "https://github.com/DLii-Technologies/labeler"
 "Bug Tracker" = "https://github.com/DLii-Technologies/labeler/issues"

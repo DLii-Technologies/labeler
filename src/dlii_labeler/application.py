@@ -316,7 +316,9 @@ class Application(QApplication):
 			return self.saveProject(parent)
 		return answer == QMessageBox.StandardButton.Discard
 
-	def openFolder(self, folder_path: Optional[Union[Path, str]] = None, parent: Optional[QWidget] = None) -> bool:
+	def openFolder(self, folder_path: Optional[Union[Path, str]] = None, parent: Optional[QWidget] = None, *, interactive: bool = True) -> bool:
+		if folder_path is None and not interactive:
+			raise ValueError("A project folder is required.")
 		if not folder_path is not None:
 			# Open a file dialog to select a folder of images
 			current_directory = str(self._media_manager.folder() or "") or None
@@ -326,6 +328,8 @@ class Application(QApplication):
 		folder_path = str(folder_path)
 		image_paths = self._media_manager.scanFolder(folder_path)
 		if not image_paths:
+			if not interactive:
+				raise ValueError("No supported images found directly in the project folder.")
 			QMessageBox.warning(
 				parent,
 				"No images found",
@@ -333,11 +337,13 @@ class Application(QApplication):
 				"Images must be directly inside the selected folder; subfolders are not searched."
 			)
 			return False
-		if not self.confirmUnsavedChanges(parent):
+		if interactive and not self.confirmUnsavedChanges(parent):
 			return False
 		try:
 			data_store = DataStore(folder_path)
 		except Exception as error:
+			if not interactive:
+				raise
 			QMessageBox.critical(parent, "Could not open project", str(error))
 			return False
 		self._folder_path = Path(folder_path)
@@ -351,7 +357,7 @@ class Application(QApplication):
 			last_frame = min(max(last_frame, 0), self._media_manager.length() - 1)
 			self._media_manager.setIndex(last_frame, reveal=False)
 		self.folderOpened.emit(folder_path)
-		if not self._data_store.checkVersion():
+		if interactive and not self._data_store.checkVersion():
 			# Alert the user the data may be incompatible. Ask to continue
 			if QMessageBox.warning(
 				parent,

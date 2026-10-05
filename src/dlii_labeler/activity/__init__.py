@@ -260,7 +260,7 @@ class KeyframeableGraphicsItem(SaveableGraphicsItem, Generic[T]):
 		# Qt deselects hidden items. Preserve the logical selection while updating the canvas.
 		with QSignalBlocker(scene) if scene is not None else nullcontext():
 			self.setState(self.stateForFrame(frame_index))
-			self.setVisible(self.isAlive())
+			self.setVisible(self.isAlive() or selected)
 			self.setSelected(selected and self.isVisible())
 
 
@@ -438,6 +438,9 @@ class Activity(QGraphicsScene):
 		self._timeline_selection = selected
 		with QSignalBlocker(self):
 			for item in set(self.selectedItems()) | selected:
+				# Reveal selections now; defer hiding deselected objects until a frame change.
+				if isinstance(item, KeyframeableGraphicsItem) and item in selected:
+					item.show()
 				item.setSelected(item in selected and item.isVisible())
 		self.timelineSelectionChanged.emit()
 		self._saveSelection()

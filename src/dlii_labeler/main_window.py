@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
 	QLabel,
 	QMainWindow,
 	QMenuBar,
+	QScrollArea,
 	QStatusBar,
 )
 from .widget.pane import Pane
@@ -50,7 +51,10 @@ class MainWindow(QMainWindow):
 		self._properties_dock = QDockWidget("Properties", self)
 		self._properties_dock.setObjectName("properties_dock")
 		self._properties_dock.setMinimumSize(0, 0)
-		self._properties_dock.setWidget(self._object_properties)
+		properties_scroll = QScrollArea()
+		properties_scroll.setWidgetResizable(True)
+		properties_scroll.setWidget(self._object_properties)
+		self._properties_dock.setWidget(properties_scroll)
 		self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._properties_dock)
 		self._viewport_widget.activityChanged.connect(self._object_properties.setActivity)
 		self._viewport_widget.activityChanged.connect(self._scrubber.setActivity)

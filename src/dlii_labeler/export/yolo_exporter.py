@@ -22,6 +22,21 @@ class YoloExporter(Exporter):
 
 	IDENTIFIER = "YOLO"
 
+	@classmethod
+	def add_cli_arguments(cls, parser) -> None:
+		parser.add_argument("--type", choices=("detection", "segmentation"), help="Annotation type; inferred for projects containing only one type")
+		parser.add_argument("--include-empty-frames", action="store_true", help="Write empty label files for unlabeled frames")
+
+	def cli_options(self, args):
+		detection, segmentation = self.annotationTypeDefaults()
+		if args.type is None and detection and segmentation:
+			raise ValueError("Project contains boxes and polygons; choose --type detection or --type segmentation.")
+		return self.Options(
+			object_detection=args.type == "detection" if args.type else detection,
+			object_segmentation=args.type == "segmentation" if args.type else segmentation,
+			include_empty_frames=args.include_empty_frames,
+		)
+
 	@dataclass
 	class Options:
 		object_detection: bool = True

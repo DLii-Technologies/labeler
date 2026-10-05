@@ -3,10 +3,14 @@ import sys
 
 from PyQt6.QtCore import QTimer
 
-from dlii_labeler.application import Application
-from dlii_labeler.main_window import MainWindow
 
-def main(argv):
+def main(argv=None):
+	argv = sys.argv if argv is None else argv
+	if len(argv) > 1 and argv[1] in ("export", "--help", "-h"):
+		from .cli import main as cli_main
+		return cli_main(argv[1:])
+	from dlii_labeler.application import Application
+	from dlii_labeler.main_window import MainWindow
 	app = Application(argv)
 
 	def handle_sigint(_signal, _frame):

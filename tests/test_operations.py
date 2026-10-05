@@ -179,6 +179,54 @@ class OperationTest(unittest.TestCase):
 						self.assertEqual(item.currentState(), before)
 						self.assertEqual(self.history.stack.count(), count)
 
+	def test_polygon_selection_keeps_narrow_dock_and_out_of_range_visibility(self):
+		from dlii_labeler.main_window import MainWindow
+		scene = self.app.activities()[ObjectSegmentationActivity.IDENTIFIER]
+		self.app.mediaManager().setIndex(2)
+		scene.createPath([QPointF(20, 20), QPointF(80, 20), QPointF(80, 80), QPointF(20, 80)])
+		item = next(item for item in scene.items() if isinstance(item, PathItem))
+		item.insertKeyframe()
+		self.app.mediaManager().setIndex(5)
+		item.insertKeyframe()
+		scene.setTimelineSelection([])
+		window = MainWindow()
+		window._viewport_widget.setActivity(scene)
+		window.show()
+		self.app.processEvents()
+		window.resizeDocks([window._properties_dock], [100], Qt.Orientation.Horizontal)
+		self.app.processEvents()
+		view = window._viewport_widget
+		before_geometry = view.geometry()
+		before_state = item.currentState()
+		try:
+			point = view.mapFromScene(QPointF(20, 50))
+			QTest.mousePress(view.viewport(), Qt.MouseButton.LeftButton, pos=point)
+			self.app.processEvents()
+			self.assertEqual(view.geometry(), before_geometry)
+			QTest.mouseMove(view.viewport(), point)
+			QTest.mouseRelease(view.viewport(), Qt.MouseButton.LeftButton, pos=point)
+			self.assertEqual(item.currentState(), before_state)
+			self.assertTrue(item.isSelected())
+			for frame in (0, 9):
+				self.app.mediaManager().setIndex(frame)
+				self.assertTrue(item.isVisible())
+				self.assertTrue(item.isSelected())
+				scene.setTimelineSelection([])
+				self.assertTrue(item.isVisible())
+				self.assertFalse(item.isSelected())
+				self.app.mediaManager().setIndex(1 if frame == 0 else 8)
+				self.assertFalse(item.isVisible())
+				scene.setTimelineSelection([item])
+				self.assertTrue(item.isVisible())
+				item.setSelected(False)
+				self.assertTrue(item.isVisible())
+				self.app.mediaManager().setIndex(frame)
+				self.assertFalse(item.isVisible())
+				scene.setTimelineSelection([item])
+		finally:
+			with patch.object(self.app, "confirmUnsavedChanges", return_value=True):
+				window.close()
+
 	def test_planes_and_groups_restore_without_changing_zoom(self):
 		self.scene.createBox(QRectF(10, 10, 20, 20))
 		item = self.boxes()[0]

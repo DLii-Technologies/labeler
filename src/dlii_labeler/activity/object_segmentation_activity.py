@@ -856,6 +856,8 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 
 		label = self.resolvedLabel()
 		color = QColor(label.color) if label is not None else QColor(192, 192, 192)
+		if not self.isAlive():
+			color = QColor(192, 192, 192)
 		if self.isInterpolated():
 			color = QColor(0, 0, 255)
 		elif self.isKeyframed():

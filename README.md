@@ -42,6 +42,13 @@ on macOS). Changes stay in memory until you save to the frame folder's
 `.dlii_labels` directory. The window indicates unsaved changes and prompts to
 save, discard, or cancel before closing or opening another project.
 
+Use **Edit → Undo/Redo** with the standard **Ctrl/Command+Z** and redo shortcuts
+to undo annotations, property changes, keyframes, perspective planes, and
+scrubber groups/order. Each edit returns to the frame where it was made when
+undone or redone. Frame navigation, selection, zoom, and scrolling do not enter
+history. Drags and bulk edits are single operations. History holds the latest
+100 operations for the open project and resets when a project is opened.
+
 For a polygon linked to a perspective plane, hold **Ctrl** (or **Command** on
 macOS) and drag to move it without changing its shape or size. A regular drag
 continues to move it through the plane's perspective transform.

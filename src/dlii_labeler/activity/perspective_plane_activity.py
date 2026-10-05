@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 
 from . import Activity
 from ..perspective_plane import PerspectivePlane
+from ..operations import operation
 
 
 class PerspectivePlaneItem(QGraphicsPolygonItem):
@@ -237,6 +238,7 @@ class PerspectivePlaneActivity(Activity):
 		self._plane_items.clear()
 		self._refreshPlaneItems()
 
+	@operation("Delete objects and planes")
 	def deleteSelected(self) -> None:
 		planes = [item for item in self.selectedItems() if isinstance(item, PerspectivePlaneItem)]
 		for item in planes:
@@ -244,6 +246,7 @@ class PerspectivePlaneActivity(Activity):
 		if any(not isinstance(item, PerspectivePlaneItem) for item in self.selectedAnnotationItems()):
 			super().deleteSelected()
 
+	@operation("Insert keyframes")
 	def insertKeyframe(self) -> None:
 		frame = self._app.mediaManager().currentFrameIndex()
 		planes = [item for item in self.selectedItems() if isinstance(item, PerspectivePlaneItem)]
@@ -254,10 +257,11 @@ class PerspectivePlaneActivity(Activity):
 		if any(not isinstance(item, PerspectivePlaneItem) for item in self.selectedAnnotationItems()):
 			super().insertKeyframe()
 
+	@operation("Remove keyframes")
 	def removeKeyframe(self) -> None:
 		frame = self._app.mediaManager().currentFrameIndex()
 		planes = [item for item in self.selectedItems() if isinstance(item, PerspectivePlaneItem)]
-		if any(item.plane.removeKeyframe(frame) for item in planes):
+		if any([item.plane.removeKeyframe(frame) for item in planes]):
 			self._app.perspectivePlanes().changed()
 		if any(not isinstance(item, PerspectivePlaneItem) for item in self.selectedAnnotationItems()):
 			super().removeKeyframe()

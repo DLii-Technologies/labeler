@@ -8,6 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import QCoreApplication, QEvent, QRectF
 from PyQt6.QtGui import QImage, QKeySequence
+from PyQt6.QtTest import QTest
 from PyQt6.QtWidgets import QMessageBox
 
 from dlii_labeler.application import Application
@@ -44,18 +45,29 @@ class ProjectSaveTest(unittest.TestCase):
 			scene = app.activities()[ObjectDetectionActivity.IDENTIFIER]
 			try:
 				app.processEvents()
+				QTest.qWait(400)  # Include deferred window and scrubber initialization.
+				self.assertFalse(app.dataStore().isModified())
+				self.assertFalse(window.windowTitle().startswith("● "))
+				with patch.object(QMessageBox, "warning") as warning:
+					self.assertTrue(app.confirmUnsavedChanges(window))
+					warning.assert_not_called()
 				item = BoxItem(QRectF(1, 2, 4, 4))
 				scene.addItem(item)
 				scene.changed.emit()
 				self.assertTrue(app.dataStore().isModified())
-				self.assertTrue(window.isWindowModified())
+				self.assertTrue(window.windowTitle().startswith("● "))
 				self.assertFalse((Path(folder) / ".dlii_labels").exists())
 				self.assertEqual(window._save_action.shortcut(), QKeySequence(QKeySequence.StandardKey.Save))
 				window._save_action.trigger()
 				self.assertFalse(app.dataStore().isModified())
-				self.assertFalse(window.isWindowModified())
+				self.assertFalse(window.windowTitle().startswith("● "))
 				saved = DataStore(folder).get(scene.IDENTIFIER)
 				self.assertEqual(len(saved["items"]), 1)
+				self.assertTrue(app.openFolder(folder))
+				QTest.qWait(400)
+				self.assertFalse(app.dataStore().isModified())
+				self.assertFalse(window.windowTitle().startswith("● "))
+				item = next(item for item in scene.items() if isinstance(item, BoxItem))
 				item.metadata["condition"] = "changed"
 				scene.changed.emit()
 				self.assertEqual(DataStore(folder).get(scene.IDENTIFIER), saved)

@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
 from ..activity import Activity
 from ..activity.perspective_plane_activity import PerspectivePlaneItem
 from ..label_sets import MetadataField, MetadataFieldType
+from ..operations import operation
 
 
 class MixedDoubleSpinBox(QDoubleSpinBox):
@@ -260,18 +261,14 @@ class ObjectPropertiesWidget(QWidget):
 				for label in label_set.labels:
 					self._label.addItem(label.name, label.id)
 
-				for label_id in sorted(label_ids - label_set.active_label_ids() - {None}):
-					label = label_set.label(label_id)
-					text = f"Missing: {label.name}" if label is not None else f"Missing: {label_id}"
-					self._label.addItem(text, label_id)
+			active_ids = label_set.active_label_ids() if label_set is not None else set()
+			for label_id in sorted(label_ids - active_ids - {None}):
+				self._label.addItem("Unknown (Missing Label)", label_id)
 
 			if len(label_ids) == 1:
 				label_id = next(iter(label_ids))
 				index = self._label.findData(label_id)
-				if index >= 0:
-					self._label.setCurrentIndex(index)
-				else:
-					self._label.setEditText(f"Missing: {label_id}")
+				self._label.setCurrentIndex(index)
 			else:
 				self._label.setCurrentIndex(-1)
 				self._label.lineEdit().clear()
@@ -306,6 +303,7 @@ class ObjectPropertiesWidget(QWidget):
 			self._plane_name.setText(next(iter(names)) if len(names) == 1 else "")
 			self._plane_name.setPlaceholderText("Mixed" if len(names) > 1 else "")
 
+	@operation("Rename planes")
 	def _setPlaneName(self) -> None:
 		if not self._plane_items:
 			return
@@ -359,6 +357,7 @@ class ObjectPropertiesWidget(QWidget):
 			return f"{float(value):.{metadata_field.decimal_places}f}"
 		return str(value)
 
+	@operation("Edit object metadata")
 	def _setMetadataField(self, metadata_field: MetadataField, editor: QLineEdit) -> None:
 		if not self._items or not editor.isModified():
 			return
@@ -388,6 +387,7 @@ class ObjectPropertiesWidget(QWidget):
 			self._activity.changed.emit()
 
 
+	@operation("Change object labels")
 	def _selectLabel(self, index: int) -> None:
 		if not self._items:
 			return
@@ -400,6 +400,7 @@ class ObjectPropertiesWidget(QWidget):
 			self._activity.changed.emit()
 		self._scheduleRefresh()
 
+	@operation("Assign perspective plane")
 	def _selectPlane(self, index: int) -> None:
 		if not self._items:
 			return
@@ -433,6 +434,7 @@ class ObjectPropertiesWidget(QWidget):
 		if not editor.mixed:
 			self._setPosition(axis, editor.value())
 
+	@operation("Move objects")
 	def _setPosition(self, axis: str, value: float) -> None:
 		if not self._items:
 			return

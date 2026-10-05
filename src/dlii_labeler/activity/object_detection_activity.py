@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
 
 from . import KeyframeableGraphicsItem, SaveableGraphicsItem
 from .perspective_plane_activity import PerspectivePlaneActivity
+from ..operations import operation
 
 class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem):
 
@@ -376,6 +377,7 @@ class ObjectDetectionActivity(PerspectivePlaneActivity):
 		self._is_creating = False
 
 
+	@operation("Create box")
 	def createBox(self, rect: QRectF, select: bool = True):
 		box = BoxItem(rect)
 		self.addItem(box)

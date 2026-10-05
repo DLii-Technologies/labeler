@@ -7,6 +7,7 @@ import sys
 from typing import cast, Dict, Generic, List, Optional, Tuple, TYPE_CHECKING, TypeVar
 from uuid import uuid4
 from PyQt6.QtCore import (
+	QEvent,
 	QPointF,
 	QSignalBlocker,
 	QSize,
@@ -26,6 +27,7 @@ from PyQt6.QtWidgets import (
 
 if TYPE_CHECKING:
 	from ..application import Application
+from ..operations import operation
 
 T = TypeVar("T", bound=Dict)
 @dataclass(frozen=True)
@@ -374,6 +376,19 @@ class Activity(QGraphicsScene):
 
 	# Event Handling -------------------------------------------------------------------------------
 
+	def event(self, event) -> bool:
+		history = getattr(getattr(self, "_app", None), "_operations", None)
+		if history is not None and event.type() in (QEvent.Type.GraphicsSceneMousePress, QEvent.Type.GraphicsSceneMouseDoubleClick):
+			if event.button() == Qt.MouseButton.LeftButton and not getattr(self, "_operation_gesture", False):
+				self._operation_gesture = history.begin("Edit annotations")
+		try:
+			return super().event(event)
+		finally:
+			if event.type() == QEvent.Type.GraphicsSceneMouseRelease and event.button() == Qt.MouseButton.LeftButton:
+				if getattr(self, "_operation_gesture", False):
+					self._operation_gesture = False
+					history.end()
+
 	def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
 		if event.button() == Qt.MouseButton.LeftButton and not event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
 			self.clearTimelineSelection()
@@ -450,6 +465,7 @@ class Activity(QGraphicsScene):
 		self.setTimelineSelection(items, additive=not clear)
 
 
+	@operation("Delete objects")
 	def deleteSelected(self) -> None:
 		deleted = False
 		for item in self.selectedAnnotationItems():
@@ -461,6 +477,7 @@ class Activity(QGraphicsScene):
 			self.repaint()
 
 
+	@operation("Insert keyframes")
 	def insertKeyframe(self) -> None:
 		inserted = False
 		for item in self.selectedAnnotationItems():
@@ -472,6 +489,7 @@ class Activity(QGraphicsScene):
 			self.repaint()
 
 
+	@operation("Remove keyframes")
 	def removeKeyframe(self) -> None:
 		removed = False
 		for item in self.selectedAnnotationItems():

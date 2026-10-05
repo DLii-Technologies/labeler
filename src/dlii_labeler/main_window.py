@@ -72,11 +72,10 @@ class MainWindow(QMainWindow):
 		self._restoreWindowState()
 
 		self._app.mediaManager().folderChanged.connect(self.updateTitle)
-		self._app.projectModifiedChanged.connect(self.setWindowModified)
+		self._app.projectModifiedChanged.connect(self.updateTitle)
 		self._app.projectSaving.connect(self._saveWindowState)
-		self._app.projectSaving.connect(self._scrubber._saveLayout)
+		self._app.projectSaving.connect(self._scrubber._saveViewState)
 		self.updateTitle()
-		self.setWindowModified(self._app.dataStore() is not None and self._app.dataStore().isModified())
 
 
 	def _restoreWindowState(self, *_args) -> None:
@@ -184,7 +183,7 @@ class MainWindow(QMainWindow):
 			"state": bytes(self.saveState()),
 			"maximized": self.isMaximized(),
 			"fullscreen": self.isFullScreen(),
-		})
+		}, mark_modified=False)
 
 
 	def resizeEvent(self, event) -> None:
@@ -232,12 +231,34 @@ class MainWindow(QMainWindow):
 		file_menu.addSeparator()
 		file_menu.addAction("Exit", self.close)
 
+		edit_menu = self._menu_bar.addMenu("&Edit")
+		history = self._app._operations
+		self._undo_action = QAction("Undo", self)
+		self._undo_action.setShortcuts(QKeySequence.keyBindings(QKeySequence.StandardKey.Undo))
+		self._undo_action.triggered.connect(history.undo)
+		self._undo_action.setEnabled(history.stack.canUndo())
+		history.stack.canUndoChanged.connect(self._undo_action.setEnabled)
+		history.stack.undoTextChanged.connect(self._updateUndoActions)
+		edit_menu.addAction(self._undo_action)
+		self._redo_action = QAction("Redo", self)
+		self._redo_action.setShortcuts(QKeySequence.keyBindings(QKeySequence.StandardKey.Redo))
+		self._redo_action.triggered.connect(history.redo)
+		self._redo_action.setEnabled(history.stack.canRedo())
+		history.stack.canRedoChanged.connect(self._redo_action.setEnabled)
+		history.stack.redoTextChanged.connect(self._updateUndoActions)
+		edit_menu.addAction(self._redo_action)
+		edit_menu.addSeparator()
+		edit_menu.addAction("Manage Label Sets...", self._showLabelSetManager)
+
 		view_menu = self._menu_bar.addMenu("&View")
 		view_menu.addAction(self._properties_dock.toggleViewAction())
 		view_menu.addAction(self._scrubber_dock.toggleViewAction())
 
-		labels_menu = self._menu_bar.addMenu("&Labels")
-		labels_menu.addAction("Manage Label Sets...", self._showLabelSetManager)
+
+	def _updateUndoActions(self, *_args) -> None:
+		stack = self._app._operations.stack
+		self._undo_action.setText("Undo " + stack.undoText() if stack.undoText() else "Undo")
+		self._redo_action.setText("Redo " + stack.redoText() if stack.redoText() else "Redo")
 
 
 	def _showLabelSetManager(self) -> None:
@@ -247,7 +268,7 @@ class MainWindow(QMainWindow):
 
 	def _populateStatusBar(self):
 		index = self._app.mediaManager().index()
-		self._status_frames = QLabel(f"Frame: {index + 1} / {self._app.mediaManager().length()}")
+		self._status_frames = QLabel(f"Frame: {index} / {max(0, self._app.mediaManager().length() - 1)}")
 		self._status_bar.addPermanentWidget(self._status_frames)
 		self._app.mediaManager().frameIndexChanged.connect(self._onFrameChanged)
 
@@ -255,15 +276,18 @@ class MainWindow(QMainWindow):
 
 
 	def _onFrameChanged(self, index: int):
-		self._status_frames.setText(f"Frame: {index + 1} / {self._app.mediaManager().length()}")
+		self._status_frames.setText(f"Frame: {index} / {max(0, self._app.mediaManager().length() - 1)}")
 
 
-	def updateTitle(self):
+	def updateTitle(self, *_args):
 		path = self._app.mediaManager().folder()
 		title = f"{self._app.applicationName()} v{self._app.applicationVersion()}"
 		if path is not None:
 			title += f" - {path}"
-		self.setWindowTitle(title + "[*]")
+		store = self._app.dataStore()
+		if store is not None and store.isModified():
+			title = "● " + title
+		self.setWindowTitle(title)
 
 	def saveProject(self) -> bool:
 		if not self._app.saveProject(self):

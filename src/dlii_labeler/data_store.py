@@ -43,10 +43,11 @@ class DataStore(QObject):
 	def get(self, key: str, default=None):
 		return deepcopy(self._data.get(key, default))
 
-	def set(self, key: str, value) -> None:
+	def set(self, key: str, value, *, mark_modified: bool = True) -> None:
 		if key not in self._data or self._data[key] != value:
 			self._data[key] = deepcopy(value)
-			self.setModified(True)
+			if mark_modified:
+				self.setModified(True)
 
 	def images(self) -> List[Path]:
 		return [self._folder_path / p for p in self.get("image_paths", [])]

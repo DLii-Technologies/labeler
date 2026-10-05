@@ -30,6 +30,7 @@ from PyQt6.QtWidgets import (
 
 from . import KeyframeableGraphicsItem, SaveableGraphicsItem
 from .perspective_plane_activity import PerspectivePlaneActivity
+from ..operations import operation
 
 
 class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem):
@@ -314,6 +315,9 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 			QPointF(self.fromU(x), self.fromV(y))
 			for x, y in data["points"]
 		]
+		fallback_ids = self.point_ids if len(self.point_ids) == len(self.points) else range(len(self.points))
+		self.point_ids = list(data.get("point_ids", fallback_ids))
+		self._next_point_id = max(self.point_ids, default=-1) + 1
 		self.closed = True
 		self._rebuildPath()
 
@@ -322,6 +326,7 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 			"u": self.u(),
 			"v": self.v(),
 			"points": [(self.toU(p.x()), self.toV(p.y())) for p in self.points],
+			"point_ids": list(self.point_ids),
 			"label_id": self.label_id,
 			"metadata": dict(self.metadata),
 			"plane_id": self.plane_id,
@@ -960,6 +965,7 @@ class ObjectSegmentationActivity(PerspectivePlaneActivity):
 			r = size / 2.0
 			self._create_start_item.setRect(QRectF(p.x() - r, p.y() - r, size, size))
 
+	@operation("Create polygon")
 	def createPath(self, points: list[QPointF], select: bool = True):
 		if len(points) < self.MIN_POINTS:
 			return

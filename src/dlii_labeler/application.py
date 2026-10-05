@@ -42,6 +42,7 @@ from .export.tngo_exporter import TngoExporter
 from .export.yolo_exporter import YoloExporter
 from .media_manager import MediaManager
 from .perspective_plane import PerspectivePlaneStore
+from .operations import OperationHistory, operation
 from .label_sets import (
 	DEFAULT_LABEL_COLORS,
 	LabelSet,
@@ -55,6 +56,8 @@ class Application(QApplication):
 	imageChanged = pyqtSignal(QPixmap)
 	labelSetChanged = pyqtSignal()
 	labelCatalogChanged = pyqtSignal()
+	projectModifiedChanged = pyqtSignal(bool)
+	projectSaving = pyqtSignal()
 
 	@classmethod
 	def instance(cls) -> "Application":
@@ -90,6 +93,7 @@ class Application(QApplication):
 		for activity in self._activities.values():
 			self.imageChanged.connect(activity.setPixmap)
 			activity.changed.connect(self._pruneLabelTombstones)
+		self._operations = OperationHistory(self)
 
 		self._exporters = {
 		    TngoExporter.IDENTIFIER: TngoExporter(),
@@ -111,7 +115,12 @@ class Application(QApplication):
 				event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
 				and not self._isItemViewEditor(receiver)
 			):
-				QTimer.singleShot(0, receiver.clearFocus)
+				# Destroying a dialog must cancel its editor's pending focus callback.
+				timer = QTimer(receiver)
+				timer.setSingleShot(True)
+				timer.timeout.connect(receiver.clearFocus)
+				timer.timeout.connect(timer.deleteLater)
+				timer.start(0)
 		elif event.type() == QEvent.Type.MouseButtonPress:
 			focused_widget = self.focusWidget()
 			if (
@@ -203,6 +212,7 @@ class Application(QApplication):
 
 		self._label_set = local_set
 
+	@operation("Change label set")
 	def setLabelSet(self, set_id: str) -> bool:
 		label_set = self._label_catalog.get(set_id)
 		if label_set is None:
@@ -214,6 +224,7 @@ class Application(QApplication):
 		self.labelSetChanged.emit()
 		return True
 
+	@operation("Clear label set")
 	def clearLabelSet(self) -> None:
 		self._label_set = None
 		if self._data_store is not None:
@@ -267,7 +278,43 @@ class Application(QApplication):
 		data_store = self._data_store
 		if data_store is None:
 			return
-		data_store.set("last_frame", frame_index)
+		data_store.set("last_frame", frame_index, mark_modified=False)
+
+	def saveProject(self, parent: Optional[QWidget] = None) -> bool:
+		if self._data_store is None:
+			return False
+		focused = self.focusWidget()
+		if focused is not None:
+			focused.clearFocus()
+		try:
+			self.projectSaving.emit()
+			for activity in self._activities.values():
+				self._data_store.set(activity.IDENTIFIER, activity.dump())
+			self._data_store.set("perspective_planes", [plane.dump() for plane in self._perspective_planes.all()])
+			self._saveCurrentFrame(self._media_manager.currentFrameIndex())
+			self._data_store.sync()
+			self._operations.stack.setClean()
+		except Exception as error:
+			self._data_store.setModified(True)
+			QMessageBox.critical(parent, "Could not save project", str(error))
+			return False
+		return True
+
+	def confirmUnsavedChanges(self, parent: Optional[QWidget] = None) -> bool:
+		focused = self.focusWidget()
+		if focused is not None:
+			focused.clearFocus()
+		self.projectSaving.emit()
+		if self._data_store is None or not self._data_store.isModified():
+			return True
+		answer = QMessageBox.warning(
+			parent, "Unsaved changes", "Save changes to the current project?",
+			QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+			QMessageBox.StandardButton.Save,
+		)
+		if answer == QMessageBox.StandardButton.Save:
+			return self.saveProject(parent)
+		return answer == QMessageBox.StandardButton.Discard
 
 	def openFolder(self, folder_path: Optional[Union[Path, str]] = None, parent: Optional[QWidget] = None) -> bool:
 		if not folder_path is not None:
@@ -286,16 +333,23 @@ class Application(QApplication):
 				"Images must be directly inside the selected folder; subfolders are not searched."
 			)
 			return False
+		if not self.confirmUnsavedChanges(parent):
+			return False
+		try:
+			data_store = DataStore(folder_path)
+		except Exception as error:
+			QMessageBox.critical(parent, "Could not open project", str(error))
+			return False
 		self._folder_path = Path(folder_path)
 		if self._data_store is not None:
 			self._data_store.close()
-		self._data_store = DataStore(folder_path)
+		self._data_store = data_store
 		self._prepareProjectLabelSet()
 		last_frame = self._data_store.get("last_frame")
 		self._media_manager.setFolder(folder_path, image_paths)
 		if isinstance(last_frame, int) and self._media_manager.length() > 0:
 			last_frame = min(max(last_frame, 0), self._media_manager.length() - 1)
-			self._media_manager.setIndex(last_frame)
+			self._media_manager.setIndex(last_frame, reveal=False)
 		self.folderOpened.emit(folder_path)
 		if not self._data_store.checkVersion():
 			# Alert the user the data may be incompatible. Ask to continue
@@ -307,4 +361,8 @@ class Application(QApplication):
 			) == QMessageBox.StandardButton.No:
 				self.exit()
 				return False
+		self._data_store.setModified(False)
+		self._operations.stack.clear()
+		self._data_store.modifiedChanged.connect(self.projectModifiedChanged)
+		self.projectModifiedChanged.emit(False)
 		return True

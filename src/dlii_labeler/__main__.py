@@ -11,7 +11,6 @@ def main(argv):
 
 	def handle_sigint(_signal, _frame):
 		app.closeAllWindows()
-		app.quit()
 
 	signal.signal(signal.SIGINT, handle_sigint)
 	# Keep Python signal handlers responsive while Qt owns the event loop.

@@ -30,6 +30,7 @@ from PyQt6.QtWidgets import (
 
 from . import KeyframeableGraphicsItem, SaveableGraphicsItem
 from .perspective_plane_activity import PerspectivePlaneActivity
+from ..operations import operation
 
 
 class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem):
@@ -86,6 +87,7 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 		self._transform_press_pos = QPointF()
 		self._transform_pivot = QPointF()
 		self._plane_dragging = False
+		self._translation_dragging = False
 		self._plane_press_uv = QPointF()
 		self._plane_start_uv: list[QPointF] = []
 
@@ -313,6 +315,9 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 			QPointF(self.fromU(x), self.fromV(y))
 			for x, y in data["points"]
 		]
+		fallback_ids = self.point_ids if len(self.point_ids) == len(self.points) else range(len(self.points))
+		self.point_ids = list(data.get("point_ids", fallback_ids))
+		self._next_point_id = max(self.point_ids, default=-1) + 1
 		self.closed = True
 		self._rebuildPath()
 
@@ -321,6 +326,7 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 			"u": self.u(),
 			"v": self.v(),
 			"points": [(self.toU(p.x()), self.toV(p.y())) for p in self.points],
+			"point_ids": list(self.point_ids),
 			"label_id": self.label_id,
 			"metadata": dict(self.metadata),
 			"plane_id": self.plane_id,
@@ -639,6 +645,11 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 
 	def hoverMoveEvent(self, event: QGraphicsSceneHoverEvent):
 		view: QGraphicsView = event.widget().parent()  # type: ignore
+		move_modifier = Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier
+		if self.plane_id is not None and event.modifiers() & move_modifier:
+			self.setCursor(Qt.CursorShape.SizeAllCursor)
+			event.accept()
+			return
 		if self.isSelected() and self._transform_mode:
 			handle = self._transformHandleAt(view, event.pos())
 			if handle is None and self._pointsRect().contains(event.pos()):
@@ -683,6 +694,16 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 		self._dragging_point_index = None
 
 		view: QGraphicsView = event.widget().parent()  # type: ignore
+		if (
+			self.plane_id is not None
+			and event.button() == Qt.MouseButton.LeftButton
+			and event.modifiers() & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.MetaModifier)
+		):
+			self.scene().clearSelection()  # type: ignore
+			self.setSelected(True)
+			self._translation_dragging = True
+			event.accept()
+			return
 		if self.isSelected() and self._transform_mode and event.button() == Qt.MouseButton.LeftButton:
 			handle = self._transformHandleAt(view, event.pos())
 			if handle is not None:
@@ -759,6 +780,10 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 		super().mousePressEvent(event)
 
 	def mouseMoveEvent(self, event: QGraphicsSceneMouseEvent):
+		if self._translation_dragging:
+			self.setPos(self._press_item_pos + event.scenePos() - self._press_scene_pos)
+			event.accept()
+			return
 		if self._plane_dragging:
 			self._moveOnPlane(event.scenePos())
 			event.accept()
@@ -778,6 +803,12 @@ class PathItem(QGraphicsPathItem, KeyframeableGraphicsItem, SaveableGraphicsItem
 		super().mouseMoveEvent(event)
 
 	def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent):
+		if self._translation_dragging:
+			self._translation_dragging = False
+			if self.pos() != self._press_item_pos:
+				self.scene().geometryChanged.emit()  # type: ignore
+			event.accept()
+			return
 		if self._plane_dragging:
 			self._plane_dragging = False
 			self.scene().geometryChanged.emit()  # type: ignore
@@ -934,6 +965,7 @@ class ObjectSegmentationActivity(PerspectivePlaneActivity):
 			r = size / 2.0
 			self._create_start_item.setRect(QRectF(p.x() - r, p.y() - r, size, size))
 
+	@operation("Create polygon")
 	def createPath(self, points: list[QPointF], select: bool = True):
 		if len(points) < self.MIN_POINTS:
 			return

@@ -32,6 +32,7 @@ class MediaManager(QObject):
 
 	folderChanged = pyqtSignal(str)
 	frameIndexChanged = pyqtSignal(int)
+	frameJumped = pyqtSignal(int)
 	frameChanged = pyqtSignal(QPixmap)
 
 	SUPPORTED_IMAGE_FORMATS = {'.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff'}
@@ -77,17 +78,21 @@ class MediaManager(QObject):
 		self._image_paths = image_paths
 		self.folderChanged.emit(folder_path)
 		self._current_index = -1
-		self.setIndex(0)
+		self.setIndex(0, reveal=False)
 
 
-	def setIndex(self, index: int) -> None:
+	def setIndex(self, index: int, *, reveal: bool = True) -> None:
 		assert 0 <= index < len(self._image_paths)
 		if index == self._current_index:
+			if reveal:
+				self.frameJumped.emit(index)
 			return
 		self._current_index = index
 		self._current_frame = self._loadImage(self._image_paths[self._current_index])
 		self.frameIndexChanged.emit(self._current_index)
 		self.frameChanged.emit(self._current_frame)
+		if reveal:
+			self.frameJumped.emit(index)
 
 
 	def currentFrame(self) -> QPixmap:

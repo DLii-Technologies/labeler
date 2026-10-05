@@ -37,6 +37,29 @@ Run the labeler with
 python3 -m dlii_labeler </path/to/frames/folder>
 ```
 
+Save the current project with **File → Save Project** or **Ctrl+S** (**Command+S**
+on macOS). Changes stay in memory until you save to the frame folder's
+`.dlii_labels` directory. The window indicates unsaved changes and prompts to
+save, discard, or cancel before closing or opening another project.
+
+Use **Edit → Undo/Redo** with the standard **Ctrl/Command+Z** and redo shortcuts
+to undo annotations, property changes, keyframes, perspective planes, and
+scrubber groups/order. Each edit returns to the frame where it was made when
+undone or redone. Frame navigation, selection, zoom, and scrolling do not enter
+history. Drags and bulk edits are single operations. History holds the latest
+100 operations for the open project and resets when a project is opened.
+
+For a polygon linked to a perspective plane, hold **Ctrl** (or **Command** on
+macOS) and drag to move it without changing its shape or size. A regular drag
+continues to move it through the plane's perspective transform.
+
+In the scrubber, drag the top ruler to change frames and drag across detection
+rows to box select keyframes. Drag a diamond to move its keyframe. Use a trackpad
+pinch or **Ctrl/Command + mouse wheel** to zoom. Right-click a row or group to
+sort or organize detections into groups. In the name column, **Shift-click**
+selects a range, **Ctrl/Command-click** toggles one detection, and dragging
+selected names reorders them or moves them into a group.
+
 ## Building
 
 Install the development dependencies and build a native executable with

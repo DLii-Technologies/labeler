@@ -11,12 +11,14 @@ from PyQt6.QtCore import (
 	QTimer
 )
 from PyQt6.QtGui import (
-	QAction,
 	QCursor,
 	QInputDevice,
 	QKeyEvent,
 	QMouseEvent,
 	QNativeGestureEvent,
+	QPalette,
+	QPainterPath,
+	QPen,
 	QResizeEvent,
 	QTransform,
 	QWheelEvent
@@ -24,15 +26,99 @@ from PyQt6.QtGui import (
 from PyQt6.QtWidgets import (
 	QComboBox,
 	QGraphicsView,
-	QLabel,
-	QMenu,
+	QPushButton,
+	QProxyStyle,
+	QStyle,
+	QStyleFactory,
+	QStyleOptionComboBox,
+	QStylePainter,
 	QToolBar,
-	QToolButton,
+	QVBoxLayout,
 	QWidget
 )
 
 from ..activity import Activity
 from .pane_widget import PaneWidget
+
+
+class DropdownStyle(QProxyStyle):
+	def styleHint(self, hint, option=None, widget=None, returnData=None):
+		if hint == QStyle.StyleHint.SH_ComboBox_Popup:
+			return 0
+		return super().styleHint(hint, option, widget, returnData)
+
+
+class LabeledComboBox(QComboBox):
+	"""A compact labeled dropdown using the app palette and standard combo-box behavior."""
+	def __init__(self, label: str):
+		super().__init__()
+		self._field_label = label
+		self.setAccessibleName(label)
+		self.setFixedHeight(32)
+		self.setMinimumWidth(200)
+		self.setMaximumWidth(260)
+		style = DropdownStyle(QStyleFactory.create(self.style().objectName()))
+		style.setParent(self)
+		self.setStyle(style)
+		self.currentTextChanged.connect(self._updateToolTip)
+
+	def _updateToolTip(self, text: str) -> None:
+		self.setToolTip(f"{self._field_label}: {text}")
+
+	def sizeHint(self) -> QSize:
+		return QSize(230, 32)
+
+	def showPopup(self) -> None:
+		super().showPopup()
+		popup = self.view().window()
+		if not popup.isVisible():
+			return
+		bounds = self.screen().availableGeometry()
+		below = self.mapToGlobal(QPoint(0, self.height()))
+		popup.resize(min(max(self.width(), popup.width()), bounds.width()), min(popup.height(), bounds.height()))
+		x = max(bounds.left(), min(below.x(), bounds.right() - popup.width() + 1))
+		y = below.y()
+		if y + popup.height() > bounds.bottom() + 1:
+			y = self.mapToGlobal(QPoint(0, 0)).y() - popup.height()
+		y = max(bounds.top(), min(y, bounds.bottom() - popup.height() + 1))
+		popup.move(x, y)
+
+	def paintEvent(self, event) -> None:
+		option = QStyleOptionComboBox()
+		self.initStyleOption(option)
+		text_group = QPalette.ColorGroup.Active if self.isEnabled() else QPalette.ColorGroup.Disabled
+		text_color = option.palette.color(text_group, QPalette.ColorRole.ButtonText)
+		painter = QStylePainter(self)
+		painter.setRenderHint(QStylePainter.RenderHint.Antialiasing)
+		background = option.palette.color(QPalette.ColorRole.Button)
+		if option.state & QStyle.StateFlag.State_MouseOver:
+			background = background.lighter(108)
+		border_role = QPalette.ColorRole.Highlight if self.hasFocus() else QPalette.ColorRole.Mid
+		painter.setPen(QPen(option.palette.color(border_role), 1))
+		painter.setBrush(background)
+		painter.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 5, 5)
+		painter.setPen(QPen(text_color, 1.5))
+		painter.setBrush(Qt.BrushStyle.NoBrush)
+		arrow = QPainterPath()
+		arrow.moveTo(self.width() - 24, self.height() / 2 - 2)
+		arrow.lineTo(self.width() - 19, self.height() / 2 + 3)
+		arrow.lineTo(self.width() - 14, self.height() / 2 - 2)
+		painter.drawPath(arrow)
+		rect = self.rect().adjusted(12, 2, -34, -2)
+		painter.setClipRect(rect)
+		painter.setFont(self.font())
+		painter.setPen(text_color)
+		painter.setOpacity(0.65)
+		caption = rect.adjusted(0, 0, 0, 0)
+		label = self._field_label + ":"
+		caption.setWidth(painter.fontMetrics().horizontalAdvance(label))
+		painter.drawText(caption, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, label)
+		painter.setOpacity(1)
+		value = rect.adjusted(0, 0, 0, 0)
+		value.setLeft(caption.right() + 7)
+		text = painter.fontMetrics().elidedText(self.currentText(), Qt.TextElideMode.ElideRight, value.width())
+		painter.drawText(value, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, text)
+
 
 class ViewportWidget(PaneWidget, QGraphicsView):
 
@@ -92,24 +178,27 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		self._navigation_step_tick_clock = QElapsedTimer()
 
 		# Toolbar buttons
-		self._activity_button = QToolButton()
-		self._activity_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
-		self._activity_menu = QMenu()
+		self._activity_combo = LabeledComboBox("Activity")
 		for activity in self._app.activities().values():
-			action = QAction(activity.IDENTIFIER, self)
-			action.triggered.connect(lambda _, a=activity: self.setActivity(a))
-			self._activity_menu.addAction(action)
-		self._activity_button.setMenu(self._activity_menu)
-		self.activityChanged.connect(lambda activity: self._activity_button.setText(f"Activity: {activity.IDENTIFIER}"))
+			self._activity_combo.addItem(activity.IDENTIFIER, activity.IDENTIFIER)
+		self._activity_combo.activated.connect(self._selectActivity)
 
-		self._label_set_combo = QComboBox()
-		self._label_set_combo.setMinimumWidth(180)
+		self._label_set_combo = LabeledComboBox("Label set")
 		self._label_set_combo.activated.connect(self._selectLabelSet)
 		self._app.labelSetChanged.connect(self._refreshLabelSets)
 		self._app.labelCatalogChanged.connect(self._refreshLabelSets)
 
-		self._fit_to_window_action = QAction("Recenter", self)
-		self._fit_to_window_action.triggered.connect(self.recenter)
+		self._recenter_button = QPushButton("Recenter")
+		self._recenter_button.setFont(self._activity_combo.font())
+		self._recenter_button.setFixedHeight(32)
+		self._recenter_button.setStyleSheet(
+			"QPushButton { padding: 0px 14px; border: 1px solid palette(mid); "
+			"border-radius: 5px; background: palette(button); color: palette(button-text); }"
+			"QPushButton:hover { border-color: palette(highlight); }"
+			"QPushButton:pressed { background: palette(mid); }"
+			"QPushButton:focus { border-color: palette(highlight); }"
+		)
+		self._recenter_button.clicked.connect(self.recenter)
 
 		# Signals and Slots
 		self._app.mediaManager().frameChanged.connect(self._resetBaseTransform)
@@ -121,11 +210,17 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 
 	def setupToolBar(self, toolbar: QToolBar) -> None:
 		super().setupToolBar(toolbar)
-		toolbar.addWidget(self._activity_button)
-		toolbar.addSeparator()
-		toolbar.addWidget(QLabel("Label set:"))
-		toolbar.addWidget(self._label_set_combo)
-		toolbar.addAction(self._fit_to_window_action)
+		toolbar.setStyleSheet("QToolBar { margin: 0px; padding: 0px; spacing: 2px; }")
+		for index, combo in enumerate((self._activity_combo, self._label_set_combo)):
+			combo.setAttribute(Qt.WidgetAttribute.WA_LayoutUsesWidgetRect)
+			container = QWidget()
+			container.setFixedHeight(combo.height() + 12)
+			layout = QVBoxLayout(container)
+			layout.setContentsMargins(6 if index == 0 else 0, 6, 0, 6)
+			layout.setSpacing(0)
+			layout.addWidget(combo)
+			toolbar.addWidget(container)
+		toolbar.addWidget(self._recenter_button)
 		self._refreshLabelSets()
 
 	def _refreshLabelSets(self, *_args) -> None:
@@ -154,6 +249,9 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		else:
 			self._app.setLabelSet(set_id)
 
+	def _selectActivity(self, index: int) -> None:
+		self.setActivity(self._app.activities()[self._activity_combo.itemData(index)])
+
 	# Public Interface -----------------------------------------------------------------------------
 
 	def recenter(self) -> None:
@@ -176,9 +274,10 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		Set the current activity
 		"""
 		self.setScene(activity)
+		self._activity_combo.setCurrentIndex(self._activity_combo.findData(activity.IDENTIFIER))
 		data_store = self._app.dataStore()
 		if data_store is not None:
-			data_store.set(self.ACTIVITY_DATA_KEY, activity.IDENTIFIER)
+			data_store.set(self.ACTIVITY_DATA_KEY, activity.IDENTIFIER, mark_modified=False)
 		self.activityChanged.emit(activity)
 
 
@@ -242,7 +341,7 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		data_store.set(self.NAVIGATION_DATA_KEY, {
 			"zoom": self._zoom_target,
 			"pan": (self._pan_uv_target.x(), self._pan_uv_target.y()),
-		})
+		}, mark_modified=False)
 
 
 	def _restoreNavigationState(self, *_args) -> None:
@@ -300,12 +399,12 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		frame_index = media_manager.currentFrameIndex()
 		frame_count = media_manager.length()
 		if (event.key() == Qt.Key.Key_Left or event.key() == Qt.Key.Key_A) and frame_index > 0:
-			media_manager.setIndex(frame_index - 1)
+			media_manager.setIndex(frame_index - 1, reveal=False)
 			event.accept()
 			return
 		# Harcode Dvorak alternative to D for right for now
 		if (event.key() == Qt.Key.Key_Right or event.key() in (Qt.Key.Key_D, Qt.Key.Key_E)) and frame_index < frame_count - 1:
-			media_manager.setIndex(frame_index + 1)
+			media_manager.setIndex(frame_index + 1, reveal=False)
 			event.accept()
 			return
 		# Filter

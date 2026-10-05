@@ -18,6 +18,32 @@ from PyQt6.QtWidgets import (
 from ..activity import Activity
 from ..activity.perspective_plane_activity import PerspectivePlaneItem
 from ..label_sets import MetadataField, MetadataFieldType
+from ..operations import operation
+
+
+class MixedDoubleSpinBox(QDoubleSpinBox):
+	"""Keep a mixed numeric value distinct from any editable number."""
+	def __init__(self):
+		super().__init__()
+		self.mixed = False
+		self.lineEdit().textEdited.connect(self._unmix)
+
+	def _unmix(self, *_args) -> None:
+		self.mixed = False
+
+	def textFromValue(self, value: float) -> str:
+		return "Mixed" if getattr(self, "mixed", False) else super().textFromValue(value)
+
+	def stepBy(self, steps: int) -> None:
+		self.mixed = False
+		super().stepBy(steps)
+
+	def showValues(self, values: list[float]) -> None:
+		with QSignalBlocker(self):
+			self.mixed = False
+			self.setValue(values[0])
+			self.mixed = any(value != values[0] for value in values[1:])
+			self.lineEdit().setText(self.prefix() + self.textFromValue(self.value()) + self.suffix())
 
 
 class ObjectPropertiesWidget(QWidget):
@@ -27,9 +53,9 @@ class ObjectPropertiesWidget(QWidget):
 		self._activity: Optional[Activity] = None
 		self._items = []
 		self._plane_items: list[PerspectivePlaneItem] = []
-		self._values = {"x": 0.0, "y": 0.0}
 		self._metadata_editors: list[tuple[MetadataField, QLineEdit]] = []
 		self._refresh_pending = False
+		self._frame_refresh_pending = False
 		from ..application import Application
 		self._app = Application.instance()
 
@@ -45,18 +71,20 @@ class ObjectPropertiesWidget(QWidget):
 		self._form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
 
 		self._selection = QLabel("No selection")
+		self._selection.setWordWrap(True)
 		self._form.addRow("Selection", self._selection)
 
 		self._label = QComboBox()
 		self._label.setEditable(True)
 		self._label.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
-		self._label.lineEdit().setPlaceholderText("Multiple values")
+		self._label.lineEdit().setPlaceholderText("Mixed")
 		self._label.setSizePolicy(QSizePolicy.Policy.Expanding, self._label.sizePolicy().verticalPolicy())
 		self._label.activated.connect(self._selectLabel)
 		self._label.lineEdit().editingFinished.connect(self._setLabelFromText)
 		self._form.addRow("Label", self._label)
 
 		self._plane = QComboBox()
+		self._plane.setPlaceholderText("Mixed")
 		self._plane.activated.connect(self._selectPlane)
 		self._form.addRow("Transform plane", self._plane)
 
@@ -68,10 +96,12 @@ class ObjectPropertiesWidget(QWidget):
 		self._x = self._createPositionSpinBox()
 		self._x.setPrefix("X: ")
 		self._x.valueChanged.connect(lambda value: self._setPosition("x", value))
+		self._x.editingFinished.connect(lambda: self._commitPosition("x", self._x))
 
 		self._y = self._createPositionSpinBox()
 		self._y.setPrefix("Y: ")
 		self._y.valueChanged.connect(lambda value: self._setPosition("y", value))
+		self._y.editingFinished.connect(lambda: self._commitPosition("y", self._y))
 
 		self._position_inputs = QWidget()
 		position_layout = QVBoxLayout(self._position_inputs)
@@ -89,15 +119,16 @@ class ObjectPropertiesWidget(QWidget):
 		layout.addStretch()
 		self.setLayout(layout)
 		self._app.labelSetChanged.connect(self._scheduleRefresh)
-		self._app.perspectivePlanes().updated.connect(self._scheduleRefresh)
-		self._app.mediaManager().frameIndexChanged.connect(self._scheduleRefresh)
+		self._app.perspectivePlanes().structureChanged.connect(self._scheduleRefresh)
+		self._app.mediaManager().frameIndexChanged.connect(self._scheduleFrameRefresh)
 		self._app.aboutToQuit.connect(self._disconnectActivity)
 
 		self._setEnabled(False)
 
 
-	def _createPositionSpinBox(self) -> QDoubleSpinBox:
-		spin_box = QDoubleSpinBox()
+	def _createPositionSpinBox(self) -> MixedDoubleSpinBox:
+		spin_box = MixedDoubleSpinBox()
+		spin_box.setKeyboardTracking(False)
 		spin_box.setRange(-1000000.0, 1000000.0)
 		spin_box.setDecimals(1)
 		spin_box.setSingleStep(1.0)
@@ -111,6 +142,7 @@ class ObjectPropertiesWidget(QWidget):
 
 		self._activity = activity
 		self._activity.selectionChanged.connect(self._scheduleRefresh)
+		self._activity.timelineSelectionChanged.connect(self._scheduleRefresh)
 		self._activity.geometryChanged.connect(self._scheduleRefresh)
 		self._refresh()
 
@@ -119,6 +151,7 @@ class ObjectPropertiesWidget(QWidget):
 			return
 		try:
 			self._activity.selectionChanged.disconnect(self._scheduleRefresh)
+			self._activity.timelineSelectionChanged.disconnect(self._scheduleRefresh)
 			self._activity.geometryChanged.disconnect(self._scheduleRefresh)
 		except (TypeError, RuntimeError):
 			pass
@@ -128,8 +161,8 @@ class ObjectPropertiesWidget(QWidget):
 		self._disconnectActivity()
 		try:
 			self._app.labelSetChanged.disconnect(self._scheduleRefresh)
-			self._app.perspectivePlanes().updated.disconnect(self._scheduleRefresh)
-			self._app.mediaManager().frameIndexChanged.disconnect(self._scheduleRefresh)
+			self._app.perspectivePlanes().structureChanged.disconnect(self._scheduleRefresh)
+			self._app.mediaManager().frameIndexChanged.disconnect(self._scheduleFrameRefresh)
 		except (TypeError, RuntimeError):
 			pass
 		super().closeEvent(event)
@@ -146,6 +179,31 @@ class ObjectPropertiesWidget(QWidget):
 			return
 		self._refresh_pending = True
 		QTimer.singleShot(0, self._refresh)
+
+	def _scheduleFrameRefresh(self, *_args) -> None:
+		if self._refresh_pending or self._frame_refresh_pending:
+			return
+		self._frame_refresh_pending = True
+		QTimer.singleShot(0, self._refreshFrameValues)
+
+	def _refreshFrameValues(self) -> None:
+		self._frame_refresh_pending = False
+		if self._refresh_pending:
+			return
+		items = [
+			item for item in self._activity.selectedAnnotationItems()
+			if hasattr(item, "label_id")
+		] if self._activity is not None else []
+		if set(items) != set(self._items):
+			self._scheduleRefresh()
+			return
+		if not items:
+			return
+		self._refreshPositionValues()
+
+	def _refreshPositionValues(self) -> None:
+		self._x.showValues([item.x() for item in self._items])
+		self._y.showValues([item.y() for item in self._items])
 
 	def _refresh(self) -> None:
 		self._refresh_pending = False
@@ -164,11 +222,11 @@ class ObjectPropertiesWidget(QWidget):
 			self._plane_items = []
 		else:
 			self._items = [
-				item for item in self._activity.selectedItems()
+				item for item in self._activity.selectedAnnotationItems()
 				if hasattr(item, "label_id")
 			]
 			self._plane_items = [
-				item for item in self._activity.selectedItems()
+				item for item in self._activity.selectedAnnotationItems()
 				if isinstance(item, PerspectivePlaneItem)
 			]
 
@@ -192,7 +250,7 @@ class ObjectPropertiesWidget(QWidget):
 		self._form.setRowVisible(self._position_inputs, True)
 		self._form.setRowVisible(self._plane_name, False)
 		count = len(self._items)
-		self._selection.setText(f"{count} object" + ("" if count == 1 else "s"))
+		self._selection.setText("1 object" if count == 1 else f"{count} objects selected. Changes apply to all selected objects.")
 
 		label_ids = {item.label_id for item in self._items}
 		with QSignalBlocker(self._label):
@@ -203,18 +261,14 @@ class ObjectPropertiesWidget(QWidget):
 				for label in label_set.labels:
 					self._label.addItem(label.name, label.id)
 
-				for label_id in sorted(label_ids - label_set.active_label_ids() - {None}):
-					label = label_set.label(label_id)
-					text = f"Missing: {label.name}" if label is not None else f"Missing: {label_id}"
-					self._label.addItem(text, label_id)
+			active_ids = label_set.active_label_ids() if label_set is not None else set()
+			for label_id in sorted(label_ids - active_ids - {None}):
+				self._label.addItem("Unknown (Missing Label)", label_id)
 
 			if len(label_ids) == 1:
 				label_id = next(iter(label_ids))
 				index = self._label.findData(label_id)
-				if index >= 0:
-					self._label.setCurrentIndex(index)
-				else:
-					self._label.setEditText(f"Missing: {label_id}")
+				self._label.setCurrentIndex(index)
 			else:
 				self._label.setCurrentIndex(-1)
 				self._label.lineEdit().clear()
@@ -230,12 +284,7 @@ class ObjectPropertiesWidget(QWidget):
 			else:
 				self._plane.setCurrentIndex(-1)
 
-		first_item = self._items[0]
-		self._values = {"x": first_item.x(), "y": first_item.y()}
-		with QSignalBlocker(self._x):
-			self._x.setValue(self._values["x"])
-		with QSignalBlocker(self._y):
-			self._y.setValue(self._values["y"])
+		self._refreshPositionValues()
 
 		self._addMetadataFields()
 
@@ -248,12 +297,13 @@ class ObjectPropertiesWidget(QWidget):
 		self._form.setRowVisible(self._position_inputs, False)
 		self._form.setRowVisible(self._plane_name, True)
 		count = len(self._plane_items)
-		self._selection.setText(f"{count} plane" + ("" if count == 1 else "s"))
+		self._selection.setText("1 plane" if count == 1 else f"{count} planes selected. Changes apply to all selected planes.")
 		names = {item.plane.name for item in self._plane_items}
 		with QSignalBlocker(self._plane_name):
 			self._plane_name.setText(next(iter(names)) if len(names) == 1 else "")
-			self._plane_name.setPlaceholderText("Multiple values" if len(names) > 1 else "")
+			self._plane_name.setPlaceholderText("Mixed" if len(names) > 1 else "")
 
+	@operation("Rename planes")
 	def _setPlaneName(self) -> None:
 		if not self._plane_items:
 			return
@@ -293,7 +343,7 @@ class ObjectPropertiesWidget(QWidget):
 			if all(metadata_field.id in item.metadata for item in self._items) and values_match:
 				editor.setText(self._formatMetadataValue(values[0], metadata_field))
 			else:
-				editor.setPlaceholderText("Multiple values" if not values_match else "Unset")
+				editor.setPlaceholderText("Mixed" if not values_match else "Unset")
 			editor.editingFinished.connect(
 				lambda field=metadata_field, field_editor=editor: self._setMetadataField(field, field_editor)
 			)
@@ -307,8 +357,9 @@ class ObjectPropertiesWidget(QWidget):
 			return f"{float(value):.{metadata_field.decimal_places}f}"
 		return str(value)
 
+	@operation("Edit object metadata")
 	def _setMetadataField(self, metadata_field: MetadataField, editor: QLineEdit) -> None:
-		if not self._items:
+		if not self._items or not editor.isModified():
 			return
 		text = editor.text().strip()
 		if not text:
@@ -330,10 +381,13 @@ class ObjectPropertiesWidget(QWidget):
 				item.metadata.pop(metadata_field.id, None)
 			else:
 				item.metadata[metadata_field.id] = value
+		editor.setModified(False)
+		editor.setPlaceholderText("Unset" if value is None else "")
 		if self._activity is not None:
 			self._activity.changed.emit()
 
 
+	@operation("Change object labels")
 	def _selectLabel(self, index: int) -> None:
 		if not self._items:
 			return
@@ -346,6 +400,7 @@ class ObjectPropertiesWidget(QWidget):
 			self._activity.changed.emit()
 		self._scheduleRefresh()
 
+	@operation("Assign perspective plane")
 	def _selectPlane(self, index: int) -> None:
 		if not self._items:
 			return
@@ -375,16 +430,23 @@ class ObjectPropertiesWidget(QWidget):
 		self._selectLabel(self._label.findData(label.id))
 
 
+	def _commitPosition(self, axis: str, editor: MixedDoubleSpinBox) -> None:
+		if not editor.mixed:
+			self._setPosition(axis, editor.value())
+
+	@operation("Move objects")
 	def _setPosition(self, axis: str, value: float) -> None:
 		if not self._items:
 			return
-
-		delta = value - self._values[axis]
+		editor = self._x if axis == "x" else self._y
+		editor.mixed = False
+		changed = False
 		for item in self._items:
+			changed |= (item.x() if axis == "x" else item.y()) != value
 			if axis == "x":
-				item.setX(item.x() + delta)
+				item.setX(value)
 			else:
-				item.setY(item.y() + delta)
-		self._values[axis] = value
-		if self._activity is not None:
+				item.setY(value)
+		editor.showValues([value])
+		if changed and self._activity is not None:
 			self._activity.changed.emit()

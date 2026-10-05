@@ -5,6 +5,7 @@ import uuid
 
 import numpy as np
 from PyQt6.QtCore import QObject, QPointF, pyqtSignal
+from .operations import operation
 
 
 @dataclass
@@ -105,6 +106,7 @@ class PerspectivePlane:
 
 class PerspectivePlaneStore(QObject):
 	updated = pyqtSignal()
+	structureChanged = pyqtSignal()
 
 	DATA_KEY = "perspective_planes"
 
@@ -121,6 +123,7 @@ class PerspectivePlaneStore(QObject):
 	def get(self, plane_id: str | None) -> PerspectivePlane | None:
 		return self._planes.get(plane_id) if plane_id else None
 
+	@operation("Create perspective plane")
 	def create(self, corners: list[tuple[float, float]] | None = None) -> PerspectivePlane:
 		plane = PerspectivePlane(
 			str(uuid.uuid4()),
@@ -131,6 +134,7 @@ class PerspectivePlaneStore(QObject):
 		self.save()
 		return plane
 
+	@operation("Delete perspective plane")
 	def remove(self, plane_id: str) -> None:
 		if self._planes.pop(plane_id, None) is not None:
 			for activity in self._app.activities().values():
@@ -156,6 +160,7 @@ class PerspectivePlaneStore(QObject):
 		store = self._app.dataStore()
 		if store is not None:
 			store.set(self.DATA_KEY, [plane.dump() for plane in self._planes.values()])
+		self.structureChanged.emit()
 		self.updated.emit()
 
 	def changed(self) -> None:

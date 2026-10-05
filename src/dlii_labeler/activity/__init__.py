@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, fields, is_dataclass
+from contextlib import nullcontext
 from sortedcontainers import SortedDict
 import sys
 from typing import cast, Dict, Generic, List, Optional, Tuple, TYPE_CHECKING, TypeVar
+from uuid import uuid4
 from PyQt6.QtCore import (
+	QEvent,
 	QPointF,
+	QSignalBlocker,
 	QSize,
 	Qt,
 	pyqtSignal
@@ -23,6 +27,7 @@ from PyQt6.QtWidgets import (
 
 if TYPE_CHECKING:
 	from ..application import Application
+from ..operations import operation
 
 T = TypeVar("T", bound=Dict)
 @dataclass(frozen=True)
@@ -115,6 +120,7 @@ class KeyframeableGraphicsItem(SaveableGraphicsItem, Generic[T]):
 		self._app.mediaManager().frameIndexChanged.connect(self.onFrameChanged)
 
 		self._keyframes: Dict[int, Keyframe[T]] = SortedDict()
+		self.timeline_id = str(uuid4())
 
 	# User methods ---------------------------------------------------------------------------------
 
@@ -199,6 +205,24 @@ class KeyframeableGraphicsItem(SaveableGraphicsItem, Generic[T]):
 		return True
 
 
+	def moveKeyframes(self, frames: set[int], offset: int) -> bool:
+		"""Move existing keys together without overwriting other keys."""
+		if not offset or not frames or not frames.issubset(self._keyframes):
+			return False
+		destinations = {frame + offset for frame in frames}
+		if min(destinations) < 0 or max(destinations) >= self._app.mediaManager().length():
+			return False
+		if destinations & (set(self._keyframes) - frames):
+			return False
+		moving = {frame + offset: self._keyframes[frame].data for frame in frames}
+		for frame in frames:
+			del self._keyframes[frame]
+		for frame, data in moving.items():
+			self._keyframes[frame] = Keyframe(frame, data)
+		self.onFrameChanged(self.currentFrameIndex())
+		return True
+
+
 	def stateForFrame(self, frame_index: Optional[int] = None) -> T:
 		"""
 		Get the state for the given frame index. If no frame index is provided,
@@ -231,17 +255,19 @@ class KeyframeableGraphicsItem(SaveableGraphicsItem, Generic[T]):
 	def onFrameChanged(self, frame_index: int) -> None:
 		if len(self._keyframes) == 0:
 			return
-		state = self.stateForFrame(frame_index)
-		self.setState(state)
-
-		if not self.isAlive() and not self.isSelected():
-			self.hide()
-		else:
-			self.show()
+		scene = self.scene()
+		selected = self in scene.selectedAnnotationItems() if isinstance(scene, Activity) else self.isSelected()
+		# Qt deselects hidden items. Preserve the logical selection while updating the canvas.
+		with QSignalBlocker(scene) if scene is not None else nullcontext():
+			self.setState(self.stateForFrame(frame_index))
+			self.setVisible(self.isAlive())
+			self.setSelected(selected and self.isVisible())
 
 
 	def load(self, data: Dict) -> None:
 		super().load(data)
+		if isinstance(data.get("timeline_id"), str) and data["timeline_id"]:
+			self.timeline_id = data["timeline_id"]
 		self._keyframes = SortedDict({
 			index: Keyframe(index, data)
 			for index, data in data.get("keyframes", [])
@@ -251,6 +277,7 @@ class KeyframeableGraphicsItem(SaveableGraphicsItem, Generic[T]):
 
 	def dump(self) -> Dict:
 		return super().dump() | {
+			"timeline_id": self.timeline_id,
 			"keyframes": [
 				(keyframe.index, keyframe.data)
 				for keyframe in self._keyframes.values()
@@ -265,6 +292,7 @@ class Activity(QGraphicsScene):
 
 	changed = pyqtSignal()
 	geometryChanged = pyqtSignal()
+	timelineSelectionChanged = pyqtSignal()
 
 	def __init__(self, parent = None) -> None:
 		super().__init__(parent)
@@ -272,6 +300,8 @@ class Activity(QGraphicsScene):
 		self.addItem(self._frame)
 
 		self._current_selection: set[QGraphicsItem] = set()
+		self._timeline_selection: set[QGraphicsItem] = set()
+		self.selectionChanged.connect(self._canvasSelectionChanged)
 		self._loading = False
 
 		from ..application import Application
@@ -305,6 +335,7 @@ class Activity(QGraphicsScene):
 
 
 	def clear(self) -> None:
+		self.clearTimelineSelection()
 		for item in self.items():
 			if item != self._frame:
 				self.removeItem(item)
@@ -345,7 +376,22 @@ class Activity(QGraphicsScene):
 
 	# Event Handling -------------------------------------------------------------------------------
 
+	def event(self, event) -> bool:
+		history = getattr(getattr(self, "_app", None), "_operations", None)
+		if history is not None and event.type() in (QEvent.Type.GraphicsSceneMousePress, QEvent.Type.GraphicsSceneMouseDoubleClick):
+			if event.button() == Qt.MouseButton.LeftButton and not getattr(self, "_operation_gesture", False):
+				self._operation_gesture = history.begin("Edit annotations")
+		try:
+			return super().event(event)
+		finally:
+			if event.type() == QEvent.Type.GraphicsSceneMouseRelease and event.button() == Qt.MouseButton.LeftButton:
+				if getattr(self, "_operation_gesture", False):
+					self._operation_gesture = False
+					history.end()
+
 	def mousePressEvent(self, event: QGraphicsSceneMouseEvent) -> None:
+		if event.button() == Qt.MouseButton.LeftButton and not event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+			self.clearTimelineSelection()
 		if event.button() == Qt.MouseButton.LeftButton and event.modifiers() == Qt.KeyboardModifier.ShiftModifier:
 			for item in self.items(event.scenePos()):
 				if item.flags() & QGraphicsItem.GraphicsItemFlag.ItemIsSelectable:
@@ -376,41 +422,65 @@ class Activity(QGraphicsScene):
 
 	# Operations -----------------------------------------------------------------------------------
 
+	def selectedAnnotationItems(self) -> List[QGraphicsItem]:
+		selected = self.selectedItems()
+		return selected + [item for item in self._timeline_selection if item.scene() is self and item not in selected]
+
+	def _canvasSelectionChanged(self) -> None:
+		self._timeline_selection = {
+			item for item in self._timeline_selection if item.scene() is self and not item.isVisible()
+		} | set(self.selectedItems())
+		self.timelineSelectionChanged.emit()
+
+	def setTimelineSelection(self, items: List[QGraphicsItem], additive: bool = False) -> None:
+		selected = set(self.selectedAnnotationItems()) | set(items) if additive else set(items)
+		selected = {item for item in selected if item.scene() is self}
+		self._timeline_selection = selected
+		with QSignalBlocker(self):
+			for item in set(self.selectedItems()) | selected:
+				item.setSelected(item in selected and item.isVisible())
+		self.timelineSelectionChanged.emit()
+		self._saveSelection()
+
+	def clearTimelineSelection(self) -> None:
+		if self._timeline_selection:
+			self._timeline_selection.clear()
+			self.timelineSelectionChanged.emit()
+
 	def clearSelected(self) -> None:
+		self.clearTimelineSelection()
 		for item in self.selectedItems():
 			item.setSelected(False)
 
 
 	def toggleSelected(self, itmes: List[QGraphicsItem]) -> None:
-		for item in itmes:
-			item.setSelected(not item.isSelected())
+		self.setTimelineSelection(list(set(self.selectedAnnotationItems()) ^ set(itmes)))
 
 
 	def deselect(self, items: List[QGraphicsItem]) -> None:
-		for item in items:
-			item.setSelected(False)
+		self.setTimelineSelection(list(set(self.selectedAnnotationItems()) - set(items)))
 
 
 	def select(self, items: List[QGraphicsItem], clear: bool = True) -> None:
-		if clear:
-			self.clearSelected()
-		for item in items:
-			item.setSelected(True)
+		self.setTimelineSelection(items, additive=not clear)
 
 
+	@operation("Delete objects")
 	def deleteSelected(self) -> None:
 		deleted = False
-		for item in self.selectedItems():
+		for item in self.selectedAnnotationItems():
 			self.removeItem(item)
 			deleted = True
 		if deleted:
+			self.clearTimelineSelection()
 			self.changed.emit()
 			self.repaint()
 
 
+	@operation("Insert keyframes")
 	def insertKeyframe(self) -> None:
 		inserted = False
-		for item in self.selectedItems():
+		for item in self.selectedAnnotationItems():
 			if isinstance(item, KeyframeableGraphicsItem):
 				item.insertKeyframe()
 				inserted = True
@@ -419,9 +489,10 @@ class Activity(QGraphicsScene):
 			self.repaint()
 
 
+	@operation("Remove keyframes")
 	def removeKeyframe(self) -> None:
 		removed = False
-		for item in self.selectedItems():
+		for item in self.selectedAnnotationItems():
 			if isinstance(item, KeyframeableGraphicsItem):
 				item.removeKeyframe()
 				removed = True

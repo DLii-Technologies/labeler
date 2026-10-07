@@ -16,8 +16,8 @@ from PyQt6.QtWidgets import (
 	QWidget,
 )
 
-from ..activity.object_detection_activity import BoxItem
-from . import Exporter, UnassignedObjectsError
+from dlii_labeler.activity.object_detection_activity import BoxItem
+from dlii_labeler.export import Exporter, UnassignedObjectsError
 
 
 class TngoExporter(Exporter):
@@ -59,7 +59,7 @@ class TngoExporter(Exporter):
 		options: Options,
 		track_ids: dict[int, int],
 	) -> None:
-		from ..activity.object_detection_activity import ObjectDetectionActivity
+		from dlii_labeler.activity.object_detection_activity import ObjectDetectionActivity
 
 		activity = self.app()._activities[ObjectDetectionActivity.IDENTIFIER]
 		self.validateItems([item for item in activity.items() if hasattr(item, "label_id")])
@@ -97,7 +97,7 @@ class TngoExporter(Exporter):
 		options: Options,
 		track_ids: dict[int, int],
 	) -> None:
-		from ..activity.object_segmentation_activity import (
+		from dlii_labeler.activity.object_segmentation_activity import (
 			ObjectSegmentationActivity,
 			PathItem,
 		)

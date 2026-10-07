@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
 	QWidget
 )
 
-from .pane_widget import PaneWidget
+from dlii_labeler.widget.pane_widget import PaneWidget
 
 class Pane(QWidget):
 	def __init__(self, parent = None):

@@ -7,8 +7,8 @@ from PyQt6.QtCore import QElapsedTimer, QEvent, QPoint, QPointF, QRectF, Qt, QTi
 from PyQt6.QtGui import QColor, QContextMenuEvent, QMouseEvent, QNativeGestureEvent, QPainter, QPainterPath, QPen, QWheelEvent
 from PyQt6.QtWidgets import QAbstractScrollArea, QApplication, QInputDialog, QMenu, QWidget
 
-from ..activity import Activity, KeyframeableGraphicsItem
-from ..operations import operation
+from dlii_labeler.activity import Activity, KeyframeableGraphicsItem
+from dlii_labeler.operations import operation
 
 
 class Scrubber(QAbstractScrollArea):
@@ -21,7 +21,7 @@ class Scrubber(QAbstractScrollArea):
 
 	def __init__(self, parent=None):
 		super().__init__(parent)
-		from ..application import Application
+		from dlii_labeler.application import Application
 		self._app = Application.instance()
 		self._label_width = self.LABEL_WIDTH
 		self._activity: Activity | None = None

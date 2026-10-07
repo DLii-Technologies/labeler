@@ -22,9 +22,9 @@ from PyQt6.QtWidgets import (
 	QStyleOptionGraphicsItem
 )
 
-from . import KeyframeableGraphicsItem, SaveableGraphicsItem
-from .perspective_plane_activity import PerspectivePlaneActivity
-from ..operations import operation
+from dlii_labeler.activity import KeyframeableGraphicsItem, SaveableGraphicsItem
+from dlii_labeler.activity.perspective_plane_activity import PerspectivePlaneActivity
+from dlii_labeler.operations import operation
 
 class BoxItem(QGraphicsRectItem, KeyframeableGraphicsItem, SaveableGraphicsItem):
 

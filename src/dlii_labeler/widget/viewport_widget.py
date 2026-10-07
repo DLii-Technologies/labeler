@@ -37,8 +37,8 @@ from PyQt6.QtWidgets import (
 	QWidget
 )
 
-from ..activity import Activity
-from .pane_widget import PaneWidget
+from dlii_labeler.activity import Activity
+from dlii_labeler.widget.pane_widget import PaneWidget
 
 
 class DropdownStyle(QProxyStyle):
@@ -151,7 +151,7 @@ class ViewportWidget(PaneWidget, QGraphicsView):
 		# Set scene rect to infinite
 		self.setSceneRect(-float("inf"), -float("inf"), float("inf"), float("inf"))
 
-		from ..application import Application
+		from dlii_labeler.application import Application
 		self._app = Application.instance()
 
 		self._base_transform = QTransform()

@@ -10,6 +10,11 @@ class CliTest(unittest.TestCase):
 	def run_cli(self, *args):
 		return subprocess.run([sys.executable, "-m", "dlii_labeler", *map(str, args)], capture_output=True, text=True, timeout=30)
 
+	def test_export_from_script_entry_point(self):
+		entry_point = Path(__file__).resolve().parents[1] / "src/dlii_labeler/__main__.py"
+		result = subprocess.run([sys.executable, entry_point, "export", "--help"], capture_output=True, text=True, timeout=30)
+		self.assertEqual(result.returncode, 0, result.stderr)
+
 	def test_help_and_missing_project(self):
 		for name in ("yolo", "tngo"):
 			result = self.run_cli("export", name, "--help")

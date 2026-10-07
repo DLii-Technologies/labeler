@@ -15,10 +15,10 @@ from PyQt6.QtWidgets import (
 	QWidget
 )
 
-from ..activity import Activity
-from ..activity.perspective_plane_activity import PerspectivePlaneItem
-from ..label_sets import MetadataField, MetadataFieldType
-from ..operations import operation
+from dlii_labeler.activity import Activity
+from dlii_labeler.activity.perspective_plane_activity import PerspectivePlaneItem
+from dlii_labeler.label_sets import MetadataField, MetadataFieldType
+from dlii_labeler.operations import operation
 
 
 class MixedDoubleSpinBox(QDoubleSpinBox):
@@ -56,7 +56,7 @@ class ObjectPropertiesWidget(QWidget):
 		self._metadata_editors: list[tuple[MetadataField, QLineEdit]] = []
 		self._refresh_pending = False
 		self._frame_refresh_pending = False
-		from ..application import Application
+		from dlii_labeler.application import Application
 		self._app = Application.instance()
 
 		properties = QGroupBox("Object Properties")

@@ -5,7 +5,7 @@ import uuid
 
 import numpy as np
 from PyQt6.QtCore import QObject, QPointF, pyqtSignal
-from .operations import operation
+from dlii_labeler.operations import operation
 
 
 @dataclass

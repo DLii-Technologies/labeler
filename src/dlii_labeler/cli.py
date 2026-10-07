@@ -9,8 +9,8 @@ import sys
 
 
 def main(argv=None) -> int:
-	from .export.yolo_exporter import YoloExporter
-	from .export.tngo_exporter import TngoExporter
+	from dlii_labeler.export.yolo_exporter import YoloExporter
+	from dlii_labeler.export.tngo_exporter import TngoExporter
 
 	parser = argparse.ArgumentParser(prog="dlii_labeler", description="Open the GUI with dlii_labeler PROJECT, or export a saved project.")
 	commands = parser.add_subparsers(dest="command", required=True)
@@ -29,7 +29,7 @@ def main(argv=None) -> int:
 		if not project.is_dir() or not dbm.whichdb(str(project / ".dlii_labels" / "data")):
 			raise ValueError(f"No saved project found in {project}")
 		os.environ["QT_QPA_PLATFORM"] = "offscreen"
-		from .application import Application
+		from dlii_labeler.application import Application
 		app = Application(["dlii_labeler"])
 		app.openFolder(project, interactive=False)
 		if not app.dataStore().checkVersion():

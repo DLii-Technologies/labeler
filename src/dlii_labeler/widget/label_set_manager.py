@@ -24,7 +24,7 @@ from PyQt6.QtWidgets import (
 	QVBoxLayout,
 )
 
-from ..label_sets import LabelSet, MetadataFieldType
+from dlii_labeler.label_sets import LabelSet, MetadataFieldType
 
 
 class LabelSetManagerDialog(QDialog):
@@ -32,7 +32,7 @@ class LabelSetManagerDialog(QDialog):
 
 	def __init__(self, parent=None):
 		super().__init__(parent)
-		from ..application import Application
+		from dlii_labeler.application import Application
 		self._app = Application.instance()
 		self._working_set: Optional[LabelSet] = None
 		self._loading = False

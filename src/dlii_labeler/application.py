@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
 )
 
 try:
-	from .gen.manifest import MANIFEST
+	from dlii_labeler.gen.manifest import MANIFEST
 except ModuleNotFoundError:
 	# The build script generates this module. Keep source checkouts usable before
 	# the first build as well.
@@ -33,17 +33,17 @@ except ModuleNotFoundError:
 		"organization": "DLii Technologies",
 		"organization_domain": "dlii.tech",
 	}
-from .activity import Activity
-from .activity.object_detection_activity import ObjectDetectionActivity
-from .activity.object_segmentation_activity import ObjectSegmentationActivity
-from .activity.perspective_plane_activity import PerspectivePlaneEditorActivity
-from .data_store import DataStore
-from .export.tngo_exporter import TngoExporter
-from .export.yolo_exporter import YoloExporter
-from .media_manager import MediaManager
-from .perspective_plane import PerspectivePlaneStore
-from .operations import OperationHistory, operation
-from .label_sets import (
+from dlii_labeler.activity import Activity
+from dlii_labeler.activity.object_detection_activity import ObjectDetectionActivity
+from dlii_labeler.activity.object_segmentation_activity import ObjectSegmentationActivity
+from dlii_labeler.activity.perspective_plane_activity import PerspectivePlaneEditorActivity
+from dlii_labeler.data_store import DataStore
+from dlii_labeler.export.tngo_exporter import TngoExporter
+from dlii_labeler.export.yolo_exporter import YoloExporter
+from dlii_labeler.media_manager import MediaManager
+from dlii_labeler.perspective_plane import PerspectivePlaneStore
+from dlii_labeler.operations import OperationHistory, operation
+from dlii_labeler.label_sets import (
 	DEFAULT_LABEL_COLORS,
 	LabelSet,
 	LabelSetCatalog,

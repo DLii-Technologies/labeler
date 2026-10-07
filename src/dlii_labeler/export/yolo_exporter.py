@@ -15,8 +15,8 @@ from PyQt6.QtWidgets import (
 	QWidget
 )
 
-from ..activity.object_detection_activity import BoxItem
-from . import Exporter, UnassignedObjectsError
+from dlii_labeler.activity.object_detection_activity import BoxItem
+from dlii_labeler.export import Exporter, UnassignedObjectsError
 
 class YoloExporter(Exporter):
 
@@ -44,7 +44,7 @@ class YoloExporter(Exporter):
 		include_empty_frames: bool = False
 
 	def _export_object_detection(self, path: Path, options: Options) -> None:
-		from ..activity.object_detection_activity import ObjectDetectionActivity
+		from dlii_labeler.activity.object_detection_activity import ObjectDetectionActivity
 		activity = self.app()._activities[ObjectDetectionActivity.IDENTIFIER]
 		self.validateItems([item for item in activity.items() if isinstance(item, BoxItem)])
 		for frame_index, image_path in enumerate(self.app().mediaManager().imagePaths()):
@@ -64,7 +64,7 @@ class YoloExporter(Exporter):
 				f.write("\n".join(lines))
 
 	def _export_object_segmentation(self, path: Path, options: Options) -> None:
-		from ..activity.object_segmentation_activity import ObjectSegmentationActivity, PathItem
+		from dlii_labeler.activity.object_segmentation_activity import ObjectSegmentationActivity, PathItem
 		activity = self.app()._activities[ObjectSegmentationActivity.IDENTIFIER]
 		self.validateItems([item for item in activity.items() if isinstance(item, PathItem)])
 		for frame_index, image_path in enumerate(self.app().mediaManager().imagePaths()):

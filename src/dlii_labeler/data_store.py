@@ -5,7 +5,7 @@ import shelve
 from typing import List, Union
 from PyQt6.QtCore import QObject, pyqtSignal
 
-from . import __version__
+from dlii_labeler import __version__
 
 class DataStore(QObject):
 	modifiedChanged = pyqtSignal(bool)

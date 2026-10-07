@@ -14,9 +14,9 @@ from PyQt6.QtWidgets import (
 	QStyleOptionGraphicsItem,
 )
 
-from . import Activity
-from ..perspective_plane import PerspectivePlane
-from ..operations import operation
+from dlii_labeler.activity import Activity
+from dlii_labeler.perspective_plane import PerspectivePlane
+from dlii_labeler.operations import operation
 
 
 class PerspectivePlaneItem(QGraphicsPolygonItem):
@@ -33,7 +33,7 @@ class PerspectivePlaneItem(QGraphicsPolygonItem):
 		self.refresh()
 
 	def _frameSize(self):
-		from ..application import Application
+		from dlii_labeler.application import Application
 		return Application.instance().mediaManager().currentFrame().size()
 
 	def refresh(self) -> None:
@@ -101,7 +101,7 @@ class PerspectivePlaneItem(QGraphicsPolygonItem):
 					event.pos().y() / size.height(),
 				)
 				self.plane.corners = corners
-				from ..application import Application
+				from dlii_labeler.application import Application
 				Application.instance().perspectivePlanes().updated.emit()
 			event.accept()
 			return
@@ -110,7 +110,7 @@ class PerspectivePlaneItem(QGraphicsPolygonItem):
 	def mouseReleaseEvent(self, event: QGraphicsSceneMouseEvent) -> None:
 		if self._dragging_corner is not None:
 			self._dragging_corner = None
-			from ..application import Application
+			from dlii_labeler.application import Application
 			Application.instance().perspectivePlanes().changed()
 			event.accept()
 			return

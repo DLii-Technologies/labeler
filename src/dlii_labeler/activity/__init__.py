@@ -26,8 +26,8 @@ from PyQt6.QtWidgets import (
 )
 
 if TYPE_CHECKING:
-	from ..application import Application
-from ..operations import operation
+	from dlii_labeler.application import Application
+from dlii_labeler.operations import operation
 
 T = TypeVar("T", bound=Dict)
 @dataclass(frozen=True)
@@ -48,7 +48,7 @@ class ActivityGraphicsItem(QGraphicsItem):
 		super().__init__(*args, **kwargs)
 
 	def app(self) -> Application:
-		from ..application import Application
+		from dlii_labeler.application import Application
 		return Application.instance()
 
 	def resolvedLabel(self):
@@ -115,7 +115,7 @@ class KeyframeableGraphicsItem(SaveableGraphicsItem, Generic[T]):
 	def __init__(self, *args, **kwargs):
 		super().__init__(*args, **kwargs)
 
-		from ..application import Application
+		from dlii_labeler.application import Application
 		self._app = Application.instance()
 		self._app.mediaManager().frameIndexChanged.connect(self.onFrameChanged)
 
@@ -304,7 +304,7 @@ class Activity(QGraphicsScene):
 		self.selectionChanged.connect(self._canvasSelectionChanged)
 		self._loading = False
 
-		from ..application import Application
+		from dlii_labeler.application import Application
 		self._app = Application.instance()
 		self._app.mediaManager().frameChanged.connect(self.setPixmap)
 		self._app.folderOpened.connect(self._load)

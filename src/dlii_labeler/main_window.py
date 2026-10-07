@@ -15,11 +15,11 @@ from PyQt6.QtWidgets import (
 	QScrollArea,
 	QStatusBar,
 )
-from .widget.pane import Pane
-from .widget.object_properties_widget import ObjectPropertiesWidget
-from .widget.scrubber import Scrubber
-from .widget.viewport_widget import ViewportWidget
-from .widget.label_set_manager import LabelSetManagerDialog
+from dlii_labeler.widget.pane import Pane
+from dlii_labeler.widget.object_properties_widget import ObjectPropertiesWidget
+from dlii_labeler.widget.scrubber import Scrubber
+from dlii_labeler.widget.viewport_widget import ViewportWidget
+from dlii_labeler.widget.label_set_manager import LabelSetManagerDialog
 
 class MainWindow(QMainWindow):
 	WINDOW_DATA_KEY = "main_window_state"
@@ -28,7 +28,7 @@ class MainWindow(QMainWindow):
 		super().__init__()
 		self._restoring_window_state = True
 
-		from .application import Application
+		from dlii_labeler.application import Application
 		self._app = Application.instance()
 		self._app.folderOpened.connect(self._restoreWindowState)
 		self.setWindowTitle(f"{self._app.applicationName()} v{self._app.applicationVersion()}")

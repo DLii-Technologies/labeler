@@ -5,7 +5,7 @@ from typing import Any, Optional, TYPE_CHECKING
 from PyQt6.QtWidgets import QWidget
 
 if TYPE_CHECKING:
-	from ..application import Application
+	from dlii_labeler.application import Application
 
 
 class UnassignedObjectsError(ValueError):
@@ -21,7 +21,7 @@ class Exporter:
 		self._allow_unassigned = False
 
 	def app(self) -> "Application":
-		from ..application import Application
+		from dlii_labeler.application import Application
 		return Application.instance()
 
 	def export(self, options: Any) -> None:
@@ -62,8 +62,8 @@ class Exporter:
 			self._allow_unassigned = previous_value
 
 	def projectItems(self):
-		from ..activity.object_detection_activity import BoxItem, ObjectDetectionActivity
-		from ..activity.object_segmentation_activity import ObjectSegmentationActivity, PathItem
+		from dlii_labeler.activity.object_detection_activity import BoxItem, ObjectDetectionActivity
+		from dlii_labeler.activity.object_segmentation_activity import ObjectSegmentationActivity, PathItem
 
 		activities = self.app()._activities
 		return [
@@ -77,8 +77,8 @@ class Exporter:
 		]
 
 	def annotationTypeDefaults(self) -> tuple[bool, bool]:
-		from ..activity.object_detection_activity import BoxItem
-		from ..activity.object_segmentation_activity import PathItem
+		from dlii_labeler.activity.object_detection_activity import BoxItem
+		from dlii_labeler.activity.object_segmentation_activity import PathItem
 
 		items = self.projectItems()
 		return (
@@ -88,8 +88,8 @@ class Exporter:
 
 	def trackIds(self) -> dict[int, int]:
 		"""Return stable project-wide track IDs in first-appearance order."""
-		from ..activity.object_detection_activity import BoxItem
-		from ..activity.object_segmentation_activity import PathItem
+		from dlii_labeler.activity.object_detection_activity import BoxItem
+		from dlii_labeler.activity.object_segmentation_activity import PathItem
 
 		items = self.projectItems()
 		track_ids: dict[int, int] = {}

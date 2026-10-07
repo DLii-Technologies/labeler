@@ -14,7 +14,7 @@ def operation(name):
 	def decorate(method):
 		@wraps(method)
 		def wrapped(self, *args, **kwargs):
-			from .application import Application
+			from dlii_labeler.application import Application
 			history = getattr(Application.instance(), "_operations", None)
 			if history is None:
 				return method(self, *args, **kwargs)
@@ -95,7 +95,7 @@ class OperationHistory(QObject):
 		return {key: value for key, value in record.items() if key != "selected"} if isinstance(record, dict) else record
 
 	def capture(self):
-		from .activity import KeyframeableGraphicsItem
+		from dlii_labeler.activity import KeyframeableGraphicsItem
 		state = {}
 		for activity_id, activity in self.app.activities().items():
 			selected = set(activity.selectedAnnotationItems())
@@ -119,9 +119,9 @@ class OperationHistory(QObject):
 		return deepcopy(state)
 
 	def restore(self, changes, frame):
-		from .activity import KeyframeableGraphicsItem
-		from .label_sets import LabelSet
-		from .perspective_plane import PerspectivePlane
+		from dlii_labeler.activity import KeyframeableGraphicsItem
+		from dlii_labeler.label_sets import LabelSet
+		from dlii_labeler.perspective_plane import PerspectivePlane
 		self.replaying = True
 		try:
 			self.app.mediaManager().setIndex(frame)

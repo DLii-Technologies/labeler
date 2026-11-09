@@ -445,6 +445,13 @@ class ScrubberTest(unittest.TestCase):
 			self.assertAlmostEqual(scrubber.viewport().width() - 1 - scrubber._x(11), padding)
 			self.assertEqual(scrubber._frameAt(scrubber._label_width), 0)
 			self.assertEqual(scrubber._frameAt(scrubber.viewport().width() - 1), 11)
+			image = scrubber.viewport().grab().toImage()
+			for y in (scrubber.viewport().height() - 2,):
+				inside = image.pixelColor(round(scrubber._x(5.25)), y).lightness()
+				self.assertLess(image.pixelColor(scrubber._label_width + 2, y).lightness(), inside)
+				self.assertLess(image.pixelColor(scrubber.viewport().width() - 3, y).lightness(), inside)
+			for x in (scrubber._label_width + 2, scrubber.viewport().width() - 3):
+				self.assertEqual(image.pixelColor(x, 2), image.pixelColor(round(scrubber._x(5.25)), 2))
 
 			y = scrubber.RULER_HEIGHT + scrubber.ROW_HEIGHT // 2
 			start = QPoint(round(scrubber._x(5)), y)

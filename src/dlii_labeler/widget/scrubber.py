@@ -299,6 +299,11 @@ class Scrubber(QAbstractScrollArea):
 			p.drawLine(self._label_width, int(y + self.ROW_HEIGHT), width, int(y + self.ROW_HEIGHT))
 		p.setClipRect(self._label_width, 0, max(0, width - self._label_width), height)
 		if self.length():
+			start = max(self._label_width, min(width, self._x(0)))
+			end = max(self._label_width, min(width, self._x(self.length() - 1)))
+			shade = QColor(0, 0, 0, 100)
+			p.fillRect(QRectF(self._label_width, self.RULER_HEIGHT, start - self._label_width, height - self.RULER_HEIGHT), shade)
+			p.fillRect(QRectF(end, self.RULER_HEIGHT, width - end, height - self.RULER_HEIGHT), shade)
 			step = self._tickStep()
 			first = max(0, math.floor(self._framePosition(self._label_width)))
 			last = min(self.length() - 1, math.ceil(self._framePosition(width)))

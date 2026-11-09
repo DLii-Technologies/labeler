@@ -11,6 +11,48 @@ permissions:
   contents: read
 
 jobs:
+  source:
+    name: Build source with generated resources
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Package source with generated resources
+        run: |
+          mkdir -p build/source/dlii-labeler dist
+          git archive HEAD | tar -x -C build/source/dlii-labeler
+          python build/source/dlii-labeler/scripts/build_resources.py
+          tar -czf dist/dlii-labeler-source.tar.gz -C build/source dlii-labeler
+
+      - name: Check generated resources in archive
+        shell: python
+        run: |
+          import json
+          import tarfile
+          import tomllib
+
+          with tarfile.open("dist/dlii-labeler-source.tar.gz") as archive:
+              root = "dlii-labeler/"
+              project = tomllib.loads(archive.extractfile(root + "pyproject.toml").read().decode())
+              manifest = json.load(archive.extractfile(root + "resources/gen/manifest.json"))
+              namespace = {}
+              exec(archive.extractfile(root + "src/dlii_labeler/gen/manifest.py").read(), namespace)
+              assert namespace["MANIFEST"] == manifest
+              assert manifest["version"] == project["project"]["version"]
+
+      - name: Upload source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: dlii-labeler-source
+          path: dist/dlii-labeler-source.tar.gz
+          if-no-files-found: error
+
   build:
     name: Build (${{ matrix.platform }})
     runs-on: ${{ matrix.runner }}
@@ -105,7 +147,7 @@ jobs:
   release:
     name: Create GitHub release
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [build, source]
     runs-on: ubuntu-latest
     permissions:
       contents: write
